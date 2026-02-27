@@ -29,7 +29,8 @@ def run_video_swap(
     Requires a FaceFusion installation available in PATH.
     The command is an example template and may need adaptation to your exact image.
     """
-    facefusion_entry = Path("/opt/facefusion/facefusion.py")
+    facefusion_root = Path("/opt/facefusion")
+    facefusion_entry = facefusion_root / "facefusion.py"
     if not facefusion_entry.exists():
         raise PipelineError("facefusion entrypoint not found in worker image")
 
@@ -40,7 +41,7 @@ def run_video_swap(
 
     cmd = [
         "python3",
-        str(facefusion_entry),
+        "facefusion.py",
         "headless-run",
         "--processors",
         "face_swapper",
@@ -55,7 +56,7 @@ def run_video_swap(
         "--execution-providers",
         execution_provider,
     ]
-    _run(cmd)
+    _run(cmd, cwd=facefusion_root)
 
 
 def run_photo_sing(
