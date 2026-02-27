@@ -2,6 +2,7 @@ FROM runpod/base:0.4.1-cuda12.1.0
 
 WORKDIR /worker
 
+ARG FACEFUSION_REF=3.5.3
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git ffmpeg && \
@@ -15,14 +16,16 @@ RUN set -eux; \
     python3 -m pip install --no-cache-dir -r /worker/requirements.txt; \
     python3 -c "import requests, runpod; print('deps-ok')"
 
-RUN git clone --depth 1 https://github.com/facefusion/facefusion.git /opt/facefusion && \
+RUN git clone --depth 1 --branch "${FACEFUSION_REF}" https://github.com/facefusion/facefusion.git /opt/facefusion && \
     cd /opt/facefusion && \
     (python3 install.py --skip-conda --onnxruntime cuda || python3 install.py --skip-conda --onnxruntime default) && \
     python3 -m pip install --no-cache-dir opencv-python-headless==4.13.0.92 && \
     (python3 -m pip install --no-cache-dir onnxruntime-gpu==1.24.1 || python3 -m pip install --no-cache-dir onnxruntime==1.24.1) && \
-    cd /opt/facefusion && python3 -c "import cv2, onnxruntime; print('facefusion-runtime-ok')" && \
+    python3 -m pip check && \
+    cd /opt/facefusion && python3 -c "import sys; sys.path.insert(0, '/opt/facefusion'); import cv2, onnxruntime; from facefusion import core; print('facefusion-runtime-ok')" && \
     printf '#!/usr/bin/env bash\nexec python3 /opt/facefusion/facefusion.py "$@"\n' > /usr/local/bin/facefusion && \
-    chmod +x /usr/local/bin/facefusion
+    chmod +x /usr/local/bin/facefusion && \
+    facefusion headless-run --help >/dev/null
 
 COPY src /worker/src
 WORKDIR /worker/src

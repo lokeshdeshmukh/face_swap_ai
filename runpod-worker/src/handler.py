@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 import requests
 import runpod
 
+from preflight import PreflightError, run_preflight
 from pipeline import PipelineError, run_4k_enhance, run_photo_sing, run_video_swap
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -155,6 +156,12 @@ def main() -> None:
         os.getenv("RUNPOD_ENDPOINT_ID", ""),
         bool(os.getenv("RUNPOD_WEBHOOK_GET_JOB")),
     )
+    try:
+        preflight = run_preflight()
+        logger.info("worker preflight passed: %s", preflight)
+    except PreflightError as exc:
+        logger.error("%s", exc)
+        raise
     runpod.serverless.start({"handler": handler})
 
 
