@@ -35,11 +35,12 @@ def run_video_swap(
         raise PipelineError("facefusion entrypoint not found in worker image")
 
     execution_provider = os.getenv("FACEFUSION_EXECUTION_PROVIDER", "cuda")
+    preferred_download_provider = os.getenv("FACEFUSION_DOWNLOAD_PROVIDER", "huggingface")
     model = "inswapper_128"
     if quality == "max":
         model = "simswap_unofficial_512"
 
-    cmd = [
+    base_cmd = [
         "python3",
         "facefusion.py",
         "headless-run",
@@ -51,12 +52,35 @@ def run_video_swap(
         str(target_video),
         "-o",
         str(output_video),
+    ]
+
+    cmd = [
+        *base_cmd,
+        "--download-providers",
+        preferred_download_provider,
         "--face-swapper-model",
         model,
         "--execution-providers",
         execution_provider,
     ]
-    _run(cmd, cwd=facefusion_root)
+    try:
+        _run(cmd, cwd=facefusion_root)
+    except PipelineError as exc:
+        # Retry once with alternate provider when an asset hash/source validation fails.
+        message = str(exc).lower()
+        if "validating source for" not in message and "deleting corrupt source" not in message:
+            raise
+        alternate_provider = "github" if preferred_download_provider == "huggingface" else "huggingface"
+        retry_cmd = [
+            *base_cmd,
+            "--download-providers",
+            alternate_provider,
+            "--face-swapper-model",
+            model,
+            "--execution-providers",
+            execution_provider,
+        ]
+        _run(retry_cmd, cwd=facefusion_root)
 
 
 def run_photo_sing(
