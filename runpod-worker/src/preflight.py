@@ -39,7 +39,7 @@ def run_preflight() -> Dict[str, object]:
     errors: List[str] = []
     warnings: List[str] = []
 
-    errors.extend(_check_python_modules(["requests", "runpod", "cv2", "onnxruntime"]))
+    errors.extend(_check_python_modules(["requests", "runpod", "cv2", "onnxruntime", "scipy"]))
     errors.extend(_check_binaries(["ffmpeg", "facefusion"]))
 
     require_photo_sing = _env_bool("REQUIRE_PHOTO_SING_DEPS", False)

@@ -26,11 +26,12 @@ RUN set -eux; \
     (python3 install.py --skip-conda --onnxruntime cuda || python3 install.py --skip-conda --onnxruntime default)
 
 RUN set -eux; \
+    python3 -m pip install --no-cache-dir "scipy==${SCIPY_PY310_VERSION}"; \
     python3 -m pip install --no-cache-dir opencv-python-headless==4.13.0.92; \
     (python3 -m pip install --no-cache-dir "onnxruntime-gpu==${ONNXRUNTIME_VERSION}" || python3 -m pip install --no-cache-dir "onnxruntime==${ONNXRUNTIME_VERSION}")
 
 RUN set -eux; \
-    python3 -c "import cv2, onnxruntime; print('facefusion-runtime-ok')"
+    python3 -c "import cv2, onnxruntime, scipy; print('facefusion-runtime-ok')"
 
 RUN set -eux; \
     printf '#!/usr/bin/env bash\nexec python3 /opt/facefusion/facefusion.py \"$@\"\n' > /usr/local/bin/facefusion; \
