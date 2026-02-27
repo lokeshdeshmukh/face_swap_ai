@@ -8,6 +8,14 @@ This worker expects the backend payload contract documented in the root README.
 docker build -t truefaceswap-runpod-worker .
 ```
 
+## Local Verification
+
+Run a full local smoke test before deploying to Runpod:
+
+```bash
+bash scripts/verify-local-image.sh
+```
+
 ## Deploy
 
 Push the image to a registry and configure it as the Runpod Serverless endpoint image.
