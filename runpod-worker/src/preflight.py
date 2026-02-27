@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import os
 import shutil
+import sys
 from typing import Dict, List
 
 
@@ -35,12 +36,23 @@ def _check_binaries(required: List[str]) -> List[str]:
     return errors
 
 
+def _check_facefusion_processor_import() -> List[str]:
+    try:
+        if "/opt/facefusion" not in sys.path:
+            sys.path.insert(0, "/opt/facefusion")
+        importlib.import_module("facefusion.processors.modules.face_swapper.core")
+        return []
+    except Exception as exc:  # pragma: no cover - defensive in container
+        return [f"cannot import facefusion face_swapper processor: {exc}"]
+
+
 def run_preflight() -> Dict[str, object]:
     errors: List[str] = []
     warnings: List[str] = []
 
-    errors.extend(_check_python_modules(["requests", "runpod", "cv2", "onnxruntime", "scipy"]))
+    errors.extend(_check_python_modules(["requests", "runpod", "cv2", "onnxruntime", "scipy", "onnx"]))
     errors.extend(_check_binaries(["ffmpeg", "facefusion"]))
+    errors.extend(_check_facefusion_processor_import())
 
     require_photo_sing = _env_bool("REQUIRE_PHOTO_SING_DEPS", False)
     photo_sing_missing = _check_binaries(["liveportrait", "musetalk"])

@@ -27,11 +27,14 @@ RUN set -eux; \
 
 RUN set -eux; \
     python3 -m pip install --no-cache-dir "scipy==${SCIPY_PY310_VERSION}"; \
+    python3 -m pip install --no-cache-dir "onnx==1.20.1"; \
     python3 -m pip install --no-cache-dir opencv-python-headless==4.13.0.92; \
     (python3 -m pip install --no-cache-dir "onnxruntime-gpu==${ONNXRUNTIME_VERSION}" || python3 -m pip install --no-cache-dir "onnxruntime==${ONNXRUNTIME_VERSION}")
 
 RUN set -eux; \
-    python3 -c "import cv2, onnxruntime, scipy; print('facefusion-runtime-ok')"
+    python3 -c "import cv2, onnxruntime, scipy, onnx; print('facefusion-runtime-ok')"; \
+    cd /opt/facefusion; \
+    python3 -c "import facefusion.processors.modules.face_swapper.core as _m; print('face_swapper-import-ok')"
 
 RUN set -eux; \
     printf '#!/usr/bin/env bash\nexec python3 /opt/facefusion/facefusion.py "$@"\n' > /usr/local/bin/facefusion; \

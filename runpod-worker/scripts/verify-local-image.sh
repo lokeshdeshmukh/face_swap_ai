@@ -23,6 +23,7 @@ if shutil.which("facefusion") is None:
 sys.path.insert(0, "/opt/facefusion")
 import facefusion.core  # noqa: F401
 import facefusion.voice_extractor  # noqa: F401
+import facefusion.processors.modules.face_swapper.core  # noqa: F401
 print("module-import-check: ok")
 PY
 
