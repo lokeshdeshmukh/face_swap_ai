@@ -11,12 +11,27 @@ class PipelineError(RuntimeError):
     pass
 
 
-def _run(cmd: List[str], cwd: Optional[Path] = None) -> None:
+def _run(cmd: List[str], cwd: Optional[Path] = None) -> str:
     result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    output = f"{result.stdout}\n{result.stderr}"
     if result.returncode != 0:
         raise PipelineError(
             f"command failed: {' '.join(cmd)}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
+    return output
+
+
+def _looks_like_no_face_detected(output: str) -> bool:
+    text = output.lower()
+    signals = [
+        "no source face",
+        "no target face",
+        "no face found",
+        "no faces found",
+        "could not detect a face",
+        "could not detect faces",
+    ]
+    return any(signal in text for signal in signals)
 
 
 def run_video_swap(
@@ -39,7 +54,7 @@ def run_video_swap(
     if not download_providers:
         download_providers = ["huggingface", "github"]
     preferred_download_provider = download_providers[0]
-    face_selector_mode = os.getenv("FACEFUSION_FACE_SELECTOR_MODE", "reference")
+    face_selector_mode = os.getenv("FACEFUSION_FACE_SELECTOR_MODE", "one")
     face_selector_order = os.getenv("FACEFUSION_FACE_SELECTOR_ORDER", "large-small")
     reference_face_position = os.getenv("FACEFUSION_REFERENCE_FACE_POSITION", "0")
     reference_frame_number = os.getenv("FACEFUSION_REFERENCE_FRAME_NUMBER", "0")
@@ -56,7 +71,7 @@ def run_video_swap(
     face_swapper_pixel_boost = os.getenv("FACEFUSION_FACE_SWAPPER_PIXEL_BOOST", "256x256")
     log_level = os.getenv("FACEFUSION_LOG_LEVEL", "info")
 
-    model = "inswapper_128_fp16"
+    model = "inswapper_128"
     if quality == "max":
         model = "simswap_unofficial_512"
 
@@ -76,16 +91,6 @@ def run_video_swap(
         face_detector_model,
         "--face-detector-size",
         face_detector_size,
-        "--face-selector-mode",
-        face_selector_mode,
-        "--face-selector-order",
-        face_selector_order,
-        "--reference-face-position",
-        reference_face_position,
-        "--reference-frame-number",
-        reference_frame_number,
-        "--reference-face-distance",
-        reference_face_distance,
         "--face-detector-score",
         face_detector_score,
         "--face-landmarker-score",
@@ -100,33 +105,50 @@ def run_video_swap(
         log_level,
     ]
 
-    cmd = [
-        *base_cmd,
-        "--download-providers",
-        *download_providers,
-        "--face-swapper-model",
-        model,
-        "--execution-providers",
-        execution_provider,
-    ]
+    def _run_swap_with_mode(selector_mode: str, provider_values: List[str]) -> str:
+        selector_args = [
+            "--face-selector-mode",
+            selector_mode,
+            "--face-selector-order",
+            face_selector_order,
+        ]
+        if selector_mode == "reference":
+            selector_args.extend(
+                [
+                    "--reference-face-position",
+                    reference_face_position,
+                    "--reference-frame-number",
+                    reference_frame_number,
+                    "--reference-face-distance",
+                    reference_face_distance,
+                ]
+            )
+        cmd = [
+            *base_cmd,
+            *selector_args,
+            "--download-providers",
+            *provider_values,
+            "--face-swapper-model",
+            model,
+            "--execution-providers",
+            execution_provider,
+        ]
+        return _run(cmd, cwd=facefusion_root)
+
     try:
-        _run(cmd, cwd=facefusion_root)
+        first_output = _run_swap_with_mode(face_selector_mode, download_providers)
+        if _looks_like_no_face_detected(first_output) and face_selector_mode != "many":
+            _run_swap_with_mode("many", download_providers)
     except PipelineError as exc:
         # Retry once with alternate provider when an asset hash/source validation fails.
         message = str(exc).lower()
         if "validating source for" not in message and "deleting corrupt source" not in message:
             raise
         alternate_provider = "github" if preferred_download_provider == "huggingface" else "huggingface"
-        retry_cmd = [
-            *base_cmd,
-            "--download-providers",
-            alternate_provider,
-            "--face-swapper-model",
-            model,
-            "--execution-providers",
-            execution_provider,
-        ]
-        _run(retry_cmd, cwd=facefusion_root)
+        retry_providers = [alternate_provider]
+        retry_output = _run_swap_with_mode(face_selector_mode, retry_providers)
+        if _looks_like_no_face_detected(retry_output) and face_selector_mode != "many":
+            _run_swap_with_mode("many", retry_providers)
 
 
 def run_photo_sing(
