@@ -6,6 +6,7 @@ import hmac
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,44 @@ from pipeline import PipelineError, run_4k_enhance, run_photo_sing, run_video_sw
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("runpod-worker")
+
+
+def _configure_persistent_cache() -> None:
+    volume_root = Path(os.getenv("RUNPOD_VOLUME_PATH", "/runpod-volume"))
+    if not volume_root.exists() or not volume_root.is_dir():
+        logger.info("persistent volume not available at %s; using ephemeral container storage", volume_root)
+        return
+
+    cache_root = volume_root / "truefaceswap-cache"
+    cache_root.mkdir(parents=True, exist_ok=True)
+
+    xdg_cache = cache_root / "xdg"
+    hf_home = cache_root / "huggingface"
+    torch_home = cache_root / "torch"
+    facefusion_home = cache_root / "facefusion"
+    for path in (xdg_cache, hf_home, torch_home, facefusion_home):
+        path.mkdir(parents=True, exist_ok=True)
+
+    os.environ.setdefault("XDG_CACHE_HOME", str(xdg_cache))
+    os.environ.setdefault("HF_HOME", str(hf_home))
+    os.environ.setdefault("TRANSFORMERS_CACHE", str(hf_home / "transformers"))
+    os.environ.setdefault("TORCH_HOME", str(torch_home))
+    os.environ.setdefault("FACEFUSION_HOME", str(facefusion_home))
+
+    root_facefusion_home = Path("/root/.facefusion")
+    if root_facefusion_home.exists() and not root_facefusion_home.is_symlink():
+        if root_facefusion_home.is_dir():
+            try:
+                shutil.copytree(root_facefusion_home, facefusion_home, dirs_exist_ok=True)
+            except Exception:
+                pass
+            shutil.rmtree(root_facefusion_home, ignore_errors=True)
+        else:
+            root_facefusion_home.unlink(missing_ok=True)
+    if not root_facefusion_home.exists():
+        root_facefusion_home.symlink_to(facefusion_home, target_is_directory=True)
+
+    logger.info("persistent cache enabled at %s", cache_root)
 
 
 def _download(url: str, path: Path) -> None:
@@ -182,6 +221,7 @@ def main() -> None:
         os.getenv("RUNPOD_ENDPOINT_ID", ""),
         bool(os.getenv("RUNPOD_WEBHOOK_GET_JOB")),
     )
+    _configure_persistent_cache()
     try:
         preflight = run_preflight()
         logger.info("worker preflight passed: %s", preflight)
