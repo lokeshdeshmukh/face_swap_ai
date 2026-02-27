@@ -113,6 +113,40 @@ def _restore_audio_if_missing(target_video: Path, output_video: Path) -> None:
     logger.info("restored audio stream from target video into output")
 
 
+def _restore_audio_from_driving_if_missing(driving_audio: Path, output_video: Path) -> None:
+    if not driving_audio.exists() or not output_video.exists():
+        return
+    if not _has_audio_stream(driving_audio):
+        logger.info("driving audio has no audio stream; skipping audio restore")
+        return
+    if _has_audio_stream(output_video):
+        logger.info("photo_sing output already contains audio stream")
+        return
+
+    remuxed = output_video.with_name(f"{output_video.stem}.with-audio{output_video.suffix}")
+    remux_cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(output_video),
+        "-i",
+        str(driving_audio),
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-shortest",
+        str(remuxed),
+    ]
+    _run(remux_cmd)
+    remuxed.replace(output_video)
+    logger.info("restored audio stream from driving audio into photo_sing output")
+
+
 def run_video_swap(
     source_image: Path,
     target_video: Path,
@@ -284,6 +318,10 @@ def run_photo_sing(
         str(output_video),
     ]
     _run(musetalk_cmd)
+    try:
+        _restore_audio_from_driving_if_missing(driving_audio, output_video)
+    except Exception as exc:
+        logger.warning("photo_sing audio restore step failed: %s", exc)
 
 
 def run_4k_enhance(input_video: Path, output_video: Path) -> None:
