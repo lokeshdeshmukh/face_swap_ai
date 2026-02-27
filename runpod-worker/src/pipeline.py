@@ -14,6 +14,39 @@ class PipelineError(RuntimeError):
 
 logger = logging.getLogger("runpod-worker")
 VALID_FACE_SWAPPER_PIXEL_BOOST = {"512x512", "768x768", "1024x1024"}
+VALID_SELECTOR_MODES = {"one", "many", "reference"}
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _is_asset_validation_error(message: str) -> bool:
+    text = message.lower()
+    return "validating source for" in text or "deleting corrupt source" in text
+
+
+def _normalize_pixel_boost(value: str) -> str:
+    if value == "256x256":
+        return "512x512"
+    if value not in VALID_FACE_SWAPPER_PIXEL_BOOST:
+        logger.warning("invalid pixel boost=%s; falling back to 512x512", value)
+        return "512x512"
+    return value
+
+
+def _dedupe_preserve_order(values: List[str]) -> List[str]:
+    seen = set()
+    out: List[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
 
 
 def _run(cmd: List[str], cwd: Optional[Path] = None) -> str:
@@ -162,12 +195,43 @@ def run_video_swap(
     if not facefusion_entry.exists():
         raise PipelineError("facefusion entrypoint not found in worker image")
 
+    quality_key = (quality or "balanced").strip().lower()
+    is_max_quality = quality_key == "max"
+
+    def _profile_env(base_name: str, default: str) -> str:
+        quality_name = f"{base_name}_{quality_key.upper()}"
+        return os.getenv(quality_name, os.getenv(base_name, default))
+
     execution_provider = os.getenv("FACEFUSION_EXECUTION_PROVIDER", "cuda")
-    download_providers = os.getenv("FACEFUSION_DOWNLOAD_PROVIDERS", "huggingface github").split()
+    download_providers = _dedupe_preserve_order(
+        os.getenv("FACEFUSION_DOWNLOAD_PROVIDERS", "huggingface github").split()
+    )
     if not download_providers:
         download_providers = ["huggingface", "github"]
     preferred_download_provider = download_providers[0]
+
     face_selector_mode = os.getenv("FACEFUSION_FACE_SELECTOR_MODE", "one")
+    if face_selector_mode not in VALID_SELECTOR_MODES:
+        logger.warning("invalid FACEFUSION_FACE_SELECTOR_MODE=%s; falling back to one", face_selector_mode)
+        face_selector_mode = "one"
+    adaptive_selector_enabled = _env_bool("FACEFUSION_ADAPTIVE_SELECTOR", True)
+    try:
+        probe_frames = int(os.getenv("FACEFUSION_PROBE_FRAMES", "72"))
+    except ValueError:
+        probe_frames = 72
+    if probe_frames < 1:
+        adaptive_selector_enabled = False
+
+    selector_candidates = _dedupe_preserve_order(
+        os.getenv(
+            "FACEFUSION_SELECTOR_CANDIDATES",
+            f"{face_selector_mode} reference many",
+        ).split()
+    )
+    selector_candidates = [mode for mode in selector_candidates if mode in VALID_SELECTOR_MODES]
+    if not selector_candidates:
+        selector_candidates = [face_selector_mode]
+
     face_selector_order = os.getenv("FACEFUSION_FACE_SELECTOR_ORDER", "large-small")
     reference_face_position = os.getenv("FACEFUSION_REFERENCE_FACE_POSITION", "0")
     reference_frame_number = os.getenv("FACEFUSION_REFERENCE_FRAME_NUMBER", "0")
@@ -177,26 +241,18 @@ def run_video_swap(
     if face_detector_model == "yoloface":
         face_detector_model = "yolo_face"
     face_detector_size = os.getenv("FACEFUSION_FACE_DETECTOR_SIZE", "640x640")
-    face_detector_score = os.getenv("FACEFUSION_FACE_DETECTOR_SCORE", "0.35")
-    face_landmarker_score = os.getenv("FACEFUSION_FACE_LANDMARKER_SCORE", "0.35")
+    face_detector_score = _profile_env("FACEFUSION_FACE_DETECTOR_SCORE", "0.25" if is_max_quality else "0.30")
+    face_landmarker_score = _profile_env("FACEFUSION_FACE_LANDMARKER_SCORE", "0.25" if is_max_quality else "0.30")
     face_detector_angles = os.getenv("FACEFUSION_FACE_DETECTOR_ANGLES", "0 90 180 270").split()
-    face_swapper_weight = os.getenv("FACEFUSION_FACE_SWAPPER_WEIGHT", "1.0")
-    face_swapper_pixel_boost = os.getenv("FACEFUSION_FACE_SWAPPER_PIXEL_BOOST", "512x512")
-    if face_swapper_pixel_boost == "256x256":
-        face_swapper_pixel_boost = "512x512"
-    if face_swapper_pixel_boost not in VALID_FACE_SWAPPER_PIXEL_BOOST:
-        logger.warning(
-            "invalid FACEFUSION_FACE_SWAPPER_PIXEL_BOOST=%s; falling back to 512x512",
-            face_swapper_pixel_boost,
-        )
-        face_swapper_pixel_boost = "512x512"
+    face_swapper_weight = _profile_env("FACEFUSION_FACE_SWAPPER_WEIGHT", "0.90" if is_max_quality else "0.85")
+    face_swapper_pixel_boost = _normalize_pixel_boost(
+        _profile_env("FACEFUSION_FACE_SWAPPER_PIXEL_BOOST", "1024x1024" if is_max_quality else "768x768")
+    )
     log_level = os.getenv("FACEFUSION_LOG_LEVEL", "info")
 
-    model = "inswapper_128"
-    if quality == "max":
-        model = "simswap_unofficial_512"
+    model = _profile_env("FACEFUSION_MODEL", "inswapper_128_fp16")
 
-    base_cmd = [
+    common_cmd = [
         "python3",
         "facefusion.py",
         "headless-run",
@@ -206,8 +262,6 @@ def run_video_swap(
         str(source_image),
         "-t",
         str(target_video),
-        "-o",
-        str(output_video),
         "--face-detector-model",
         face_detector_model,
         "--face-detector-size",
@@ -226,7 +280,12 @@ def run_video_swap(
         log_level,
     ]
 
-    def _run_swap_with_mode(selector_mode: str, provider_values: List[str]) -> str:
+    def _run_swap_with_mode(
+        selector_mode: str,
+        provider_values: List[str],
+        destination: Path,
+        trim_end_frame: Optional[int] = None,
+    ) -> str:
         selector_args = [
             "--face-selector-mode",
             selector_mode,
@@ -245,7 +304,9 @@ def run_video_swap(
                 ]
             )
         cmd = [
-            *base_cmd,
+            *common_cmd,
+            "-o",
+            str(destination),
             *selector_args,
             "--download-providers",
             *provider_values,
@@ -254,22 +315,60 @@ def run_video_swap(
             "--execution-providers",
             execution_provider,
         ]
+        if trim_end_frame is not None:
+            cmd.extend(
+                [
+                    "--trim-frame-start",
+                    "0",
+                    "--trim-frame-end",
+                    str(trim_end_frame),
+                ]
+            )
         return _run(cmd, cwd=facefusion_root)
 
+    def _select_mode(provider_values: List[str]) -> str:
+        if not adaptive_selector_enabled:
+            return face_selector_mode
+        probe_output = output_video.with_name(f"{output_video.stem}.probe.mp4")
+        try:
+            for candidate_mode in selector_candidates:
+                try:
+                    probe_log = _run_swap_with_mode(
+                        candidate_mode,
+                        provider_values,
+                        probe_output,
+                        trim_end_frame=probe_frames,
+                    )
+                except PipelineError as exc:
+                    if _is_asset_validation_error(str(exc)):
+                        raise
+                    logger.warning("adaptive probe failed for selector_mode=%s: %s", candidate_mode, exc)
+                    continue
+                if _looks_like_no_face_detected(probe_log):
+                    logger.info("adaptive probe selector_mode=%s indicated no-face", candidate_mode)
+                    continue
+                logger.info("adaptive probe selected selector_mode=%s", candidate_mode)
+                return candidate_mode
+        finally:
+            if probe_output.exists():
+                probe_output.unlink(missing_ok=True)
+        logger.warning("adaptive probe found no confident selector mode; using default=%s", face_selector_mode)
+        return face_selector_mode
+
+    def _run_full(provider_values: List[str]) -> None:
+        selected_mode = _select_mode(provider_values)
+        full_output = _run_swap_with_mode(selected_mode, provider_values, output_video)
+        if _looks_like_no_face_detected(full_output) and selected_mode != "many":
+            logger.warning("full run mode=%s indicated no-face; retrying with selector_mode=many", selected_mode)
+            _run_swap_with_mode("many", provider_values, output_video)
+
     try:
-        first_output = _run_swap_with_mode(face_selector_mode, download_providers)
-        if _looks_like_no_face_detected(first_output) and face_selector_mode != "many":
-            _run_swap_with_mode("many", download_providers)
+        _run_full(download_providers)
     except PipelineError as exc:
-        # Retry once with alternate provider when an asset hash/source validation fails.
-        message = str(exc).lower()
-        if "validating source for" not in message and "deleting corrupt source" not in message:
+        if not _is_asset_validation_error(str(exc)):
             raise
         alternate_provider = "github" if preferred_download_provider == "huggingface" else "huggingface"
-        retry_providers = [alternate_provider]
-        retry_output = _run_swap_with_mode(face_selector_mode, retry_providers)
-        if _looks_like_no_face_detected(retry_output) and face_selector_mode != "many":
-            _run_swap_with_mode("many", retry_providers)
+        _run_full([alternate_provider])
 
     try:
         _restore_audio_if_missing(target_video, output_video)
