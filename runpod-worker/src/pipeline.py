@@ -35,8 +35,25 @@ def run_video_swap(
         raise PipelineError("facefusion entrypoint not found in worker image")
 
     execution_provider = os.getenv("FACEFUSION_EXECUTION_PROVIDER", "cuda")
-    preferred_download_provider = os.getenv("FACEFUSION_DOWNLOAD_PROVIDER", "huggingface")
-    model = "inswapper_128"
+    download_providers = os.getenv("FACEFUSION_DOWNLOAD_PROVIDERS", "huggingface github").split()
+    if not download_providers:
+        download_providers = ["huggingface", "github"]
+    preferred_download_provider = download_providers[0]
+    face_selector_mode = os.getenv("FACEFUSION_FACE_SELECTOR_MODE", "reference")
+    face_selector_order = os.getenv("FACEFUSION_FACE_SELECTOR_ORDER", "large-small")
+    reference_face_position = os.getenv("FACEFUSION_REFERENCE_FACE_POSITION", "0")
+    reference_frame_number = os.getenv("FACEFUSION_REFERENCE_FRAME_NUMBER", "0")
+    reference_face_distance = os.getenv("FACEFUSION_REFERENCE_FACE_DISTANCE", "0.6")
+    face_detector_model = os.getenv("FACEFUSION_FACE_DETECTOR_MODEL", "yoloface")
+    face_detector_size = os.getenv("FACEFUSION_FACE_DETECTOR_SIZE", "640x640")
+    face_detector_score = os.getenv("FACEFUSION_FACE_DETECTOR_SCORE", "0.35")
+    face_landmarker_score = os.getenv("FACEFUSION_FACE_LANDMARKER_SCORE", "0.35")
+    face_detector_angles = os.getenv("FACEFUSION_FACE_DETECTOR_ANGLES", "0 90 180 270").split()
+    face_swapper_weight = os.getenv("FACEFUSION_FACE_SWAPPER_WEIGHT", "1.0")
+    face_swapper_pixel_boost = os.getenv("FACEFUSION_FACE_SWAPPER_PIXEL_BOOST", "256x256")
+    log_level = os.getenv("FACEFUSION_LOG_LEVEL", "info")
+
+    model = "inswapper_128_fp16"
     if quality == "max":
         model = "simswap_unofficial_512"
 
@@ -52,12 +69,38 @@ def run_video_swap(
         str(target_video),
         "-o",
         str(output_video),
+        "--face-detector-model",
+        face_detector_model,
+        "--face-detector-size",
+        face_detector_size,
+        "--face-selector-mode",
+        face_selector_mode,
+        "--face-selector-order",
+        face_selector_order,
+        "--reference-face-position",
+        reference_face_position,
+        "--reference-frame-number",
+        reference_frame_number,
+        "--reference-face-distance",
+        reference_face_distance,
+        "--face-detector-score",
+        face_detector_score,
+        "--face-landmarker-score",
+        face_landmarker_score,
+        "--face-detector-angles",
+        *face_detector_angles,
+        "--face-swapper-weight",
+        face_swapper_weight,
+        "--face-swapper-pixel-boost",
+        face_swapper_pixel_boost,
+        "--log-level",
+        log_level,
     ]
 
     cmd = [
         *base_cmd,
         "--download-providers",
-        preferred_download_provider,
+        *download_providers,
         "--face-swapper-model",
         model,
         "--execution-providers",
