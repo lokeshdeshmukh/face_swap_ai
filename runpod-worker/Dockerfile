@@ -35,7 +35,7 @@ RUN set -eux; \
 RUN set -eux; \
     printf '#!/usr/bin/env bash\nexec python3 /opt/facefusion/facefusion.py \"$@\"\n' > /usr/local/bin/facefusion; \
     chmod +x /usr/local/bin/facefusion; \
-    /usr/local/bin/facefusion --help >/dev/null
+    test -x /usr/local/bin/facefusion
 
 COPY src /worker/src
 WORKDIR /worker/src

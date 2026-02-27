@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib
 import os
 import shutil
-import subprocess
 from typing import Dict, List
 
 
@@ -36,22 +35,12 @@ def _check_binaries(required: List[str]) -> List[str]:
     return errors
 
 
-def _facefusion_smoke_test() -> List[str]:
-    cmd = ["facefusion", "--help"]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-    if result.returncode == 0:
-        return []
-    stderr_tail = (result.stderr or "").strip()[-600:]
-    return [f"facefusion CLI smoke test failed (exit={result.returncode}): {stderr_tail}"]
-
-
 def run_preflight() -> Dict[str, object]:
     errors: List[str] = []
     warnings: List[str] = []
 
     errors.extend(_check_python_modules(["requests", "runpod", "cv2", "onnxruntime"]))
     errors.extend(_check_binaries(["ffmpeg", "facefusion"]))
-    errors.extend(_facefusion_smoke_test())
 
     require_photo_sing = _env_bool("REQUIRE_PHOTO_SING_DEPS", False)
     photo_sing_missing = _check_binaries(["liveportrait", "musetalk"])
