@@ -31,8 +31,15 @@ class JobService:
         return db.get(Job, job_id)
 
     def list_existing_by_hash(self, db: Session, config_hash: str) -> Job | None:
-        stmt = select(Job).where(Job.config_hash == config_hash).order_by(Job.created_at.desc())
-        return db.execute(stmt).scalar_one_or_none()
+        # Multiple historical rows can exist for the same config_hash.
+        # Return the newest match deterministically instead of raising.
+        stmt = (
+            select(Job)
+            .where(Job.config_hash == config_hash)
+            .order_by(Job.created_at.desc(), Job.id.desc())
+            .limit(1)
+        )
+        return db.execute(stmt).scalars().first()
 
     def create_job(
         self,
