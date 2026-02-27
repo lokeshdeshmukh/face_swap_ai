@@ -35,16 +35,18 @@ def run_video_swap(
     execution_provider = os.getenv("FACEFUSION_EXECUTION_PROVIDER", "cuda")
     model = "inswapper_128"
     if quality == "max":
-        model = "inswapper-512-live"
+        model = "simswap_unofficial_512"
 
     cmd = [
         "facefusion",
         "headless-run",
-        "--source",
+        "--processors",
+        "face_swapper",
+        "-s",
         str(source_image),
-        "--target",
+        "-t",
         str(target_video),
-        "--output-path",
+        "-o",
         str(output_video),
         "--face-swapper-model",
         model,
