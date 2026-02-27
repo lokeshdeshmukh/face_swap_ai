@@ -26,7 +26,7 @@ class _DummyStorage(StorageProvider):
 
 
 class _DummyCompute(ComputeProvider):
-    async def submit_job(self, job, asset_urls, callback_url, callback_secret):  # type: ignore[no-untyped-def]
+    async def submit_job(self, job, asset_urls, output_target, callback_url, callback_secret):  # type: ignore[no-untyped-def]
         return None, None
 
     async def get_job_status(self, runpod_job_id: str) -> dict[str, object]:

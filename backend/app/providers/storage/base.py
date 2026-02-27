@@ -20,6 +20,9 @@ class StorageProvider(ABC):
     def build_output_url(self, job_id: str, output_ref: str, ttl_seconds: int) -> str:
         return self.build_asset_url(output_ref, ttl_seconds)
 
+    def build_worker_output_target(self, job_id: str, file_name: str, ttl_seconds: int) -> dict[str, str] | None:
+        return None
+
     def resolve_asset_token(self, token: str) -> Path:
         raise ValueError("asset token route is only available for local storage")
 

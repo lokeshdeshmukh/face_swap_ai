@@ -11,6 +11,7 @@ class ComputeProvider(ABC):
         self,
         job: Job,
         asset_urls: dict[str, str],
+        output_target: dict[str, str] | None,
         callback_url: str | None,
         callback_secret: str | None,
     ) -> tuple[str | None, str | None]:

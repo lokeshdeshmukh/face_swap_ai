@@ -40,3 +40,21 @@ class S3StorageProvider(StorageProvider):
             Params={"Bucket": self.bucket, "Key": asset_ref},
             ExpiresIn=ttl_seconds,
         )
+
+    def build_worker_output_target(self, job_id: str, file_name: str, ttl_seconds: int) -> dict[str, str] | None:
+        key = self._key("outputs", job_id, Path(file_name).name)
+        upload_url = self.client.generate_presigned_url(
+            ClientMethod="put_object",
+            Params={"Bucket": self.bucket, "Key": key, "ContentType": "video/mp4"},
+            ExpiresIn=ttl_seconds,
+        )
+        output_url = self.client.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": self.bucket, "Key": key},
+            ExpiresIn=ttl_seconds,
+        )
+        return {
+            "upload_url": upload_url,
+            "output_url": output_url,
+            "output_ref": key,
+        }

@@ -150,6 +150,11 @@ class JobService:
             asset_urls["driving_audio_url"] = self.storage.build_asset_url(
                 job.driving_audio_path, settings.asset_token_ttl_seconds
             )
+        output_target = self.storage.build_worker_output_target(
+            job.id,
+            "result.mp4",
+            settings.output_url_ttl_seconds,
+        )
 
         callback_url = self._callback_url_or_none()
         callback_secret = settings.callback_secret if callback_url else None
@@ -161,6 +166,7 @@ class JobService:
         runpod_job_id, request_id = await self.compute.submit_job(
             job=job,
             asset_urls=asset_urls,
+            output_target=output_target,
             callback_url=callback_url,
             callback_secret=callback_secret,
         )
@@ -205,7 +211,15 @@ class JobService:
         output = status_body.get("output")
         if not isinstance(output, dict):
             self._start_stage(job, "failed", "failed")
-            job.error_message = "runpod completed without output payload"
+            job.error_message = str(status_body.get("error") or "runpod completed without output payload")
+            job.finished_at = datetime.utcnow()
+            db.add(job)
+            db.commit()
+            return
+
+        if output.get("ok") is False:
+            self._start_stage(job, "failed", "failed")
+            job.error_message = str(output.get("error") or status_body.get("error") or "worker failed")
             job.finished_at = datetime.utcnow()
             db.add(job)
             db.commit()
@@ -219,12 +233,22 @@ class JobService:
             db.commit()
             return
 
+        payload_metadata: dict[str, str] = {"source": "runpod-status-poll"}
+        if isinstance(output.get("metadata"), dict):
+            payload_metadata.update(
+                {str(k): str(v) for k, v in output["metadata"].items() if v is not None}
+            )
+
+        if not output.get("output_base64") and not output.get("output_url") and output.get("output_ref"):
+            payload_metadata["output_ref"] = str(output["output_ref"])
+
         payload = RunpodCallbackPayload(
             job_id=job.id,
             status="completed",
             output_url=output.get("output_url"),
             output_base64=output.get("output_base64"),
-            metadata={"source": "runpod-status-poll"},
+            metadata=payload_metadata,
+            error=str(output.get("error")) if output.get("error") else None,
         )
         await self.handle_callback(db, payload)
 
@@ -251,14 +275,17 @@ class JobService:
         db.commit()
 
         output_bytes: bytes
-        if payload.output_base64:
+        output_ref_from_worker = payload.metadata.get("output_ref")
+        if output_ref_from_worker:
+            output_ref = output_ref_from_worker
+        elif payload.output_base64:
             output_bytes = base64.b64decode(payload.output_base64)
+            output_ref = self.storage.persist_output(job.id, "result.mp4", output_bytes)
         elif payload.output_url:
             output_bytes = await self._download_to_bytes(payload.output_url)
+            output_ref = self.storage.persist_output(job.id, "result.mp4", output_bytes)
         else:
             raise ValueError("callback missing output_base64 or output_url")
-
-        output_ref = self.storage.persist_output(job.id, "result.mp4", output_bytes)
 
         self._start_stage(job, "packaging", "processing")
         self._start_stage(job, "done", "done")

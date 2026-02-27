@@ -63,6 +63,12 @@ def _extract_audio(video_path: Path, audio_out: Path) -> None:
         raise ValueError(f"ffmpeg audio extraction failed: {result.stderr}")
 
 
+def _upload_file(url: str, path: Path, content_type: str) -> None:
+    with path.open("rb") as f:
+        response = requests.put(url, data=f, headers={"Content-Type": content_type}, timeout=600)
+    response.raise_for_status()
+
+
 def handler(event: Dict[str, Any]) -> Dict[str, Any]:
     payload = event.get("input", {}) if isinstance(event, dict) else {}
     if not isinstance(payload, dict):
@@ -80,6 +86,18 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
     assets = payload.get("assets")
     if not isinstance(assets, dict):
         raise ValueError("assets field is required")
+
+    output_target = payload.get("output_target")
+    output_upload_url: Optional[str] = None
+    output_url: Optional[str] = None
+    output_ref: Optional[str] = None
+    if isinstance(output_target, dict):
+        if output_target.get("upload_url"):
+            output_upload_url = str(output_target["upload_url"])
+        if output_target.get("output_url"):
+            output_url = str(output_target["output_url"])
+        if output_target.get("output_ref"):
+            output_ref = str(output_target["output_ref"])
 
     callback = payload.get("callback")
     callback_url: Optional[str] = None
@@ -121,13 +139,21 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
                 run_4k_enhance(out_main, enhanced)
                 final_out = enhanced
 
-            output_base64 = base64.b64encode(final_out.read_bytes()).decode("utf-8")
-            success_body = {
+            success_body: Dict[str, Any] = {
                 "job_id": job_id,
                 "status": "completed",
-                "output_base64": output_base64,
                 "metadata": {"mode": mode, "quality": quality},
             }
+            if output_upload_url and (output_url or output_ref):
+                _upload_file(output_upload_url, final_out, "video/mp4")
+                if output_url:
+                    success_body["output_url"] = output_url
+                if output_ref:
+                    success_body["output_ref"] = output_ref
+            else:
+                output_base64 = base64.b64encode(final_out.read_bytes()).decode("utf-8")
+                success_body["output_base64"] = output_base64
+
             if callback_url and callback_secret:
                 try:
                     _callback(callback_url, callback_secret, success_body)
