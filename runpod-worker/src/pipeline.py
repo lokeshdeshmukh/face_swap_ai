@@ -13,6 +13,7 @@ class PipelineError(RuntimeError):
 
 
 logger = logging.getLogger("runpod-worker")
+VALID_FACE_SWAPPER_PIXEL_BOOST = {"512x512", "768x768", "1024x1024"}
 
 
 def _run(cmd: List[str], cwd: Optional[Path] = None) -> str:
@@ -146,7 +147,15 @@ def run_video_swap(
     face_landmarker_score = os.getenv("FACEFUSION_FACE_LANDMARKER_SCORE", "0.35")
     face_detector_angles = os.getenv("FACEFUSION_FACE_DETECTOR_ANGLES", "0 90 180 270").split()
     face_swapper_weight = os.getenv("FACEFUSION_FACE_SWAPPER_WEIGHT", "1.0")
-    face_swapper_pixel_boost = os.getenv("FACEFUSION_FACE_SWAPPER_PIXEL_BOOST", "256x256")
+    face_swapper_pixel_boost = os.getenv("FACEFUSION_FACE_SWAPPER_PIXEL_BOOST", "512x512")
+    if face_swapper_pixel_boost == "256x256":
+        face_swapper_pixel_boost = "512x512"
+    if face_swapper_pixel_boost not in VALID_FACE_SWAPPER_PIXEL_BOOST:
+        logger.warning(
+            "invalid FACEFUSION_FACE_SWAPPER_PIXEL_BOOST=%s; falling back to 512x512",
+            face_swapper_pixel_boost,
+        )
+        face_swapper_pixel_boost = "512x512"
     log_level = os.getenv("FACEFUSION_LOG_LEVEL", "info")
 
     model = "inswapper_128"
