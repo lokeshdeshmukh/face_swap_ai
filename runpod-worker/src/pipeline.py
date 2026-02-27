@@ -55,6 +55,63 @@ def _looks_like_no_face_detected(output: str) -> bool:
     return any(signal in text for signal in signals)
 
 
+def _has_audio_stream(video_path: Path) -> bool:
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            "stream=codec_type",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(video_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        logger.warning("ffprobe failed for %s: %s", video_path, result.stderr.strip())
+        return False
+    return "audio" in result.stdout.lower()
+
+
+def _restore_audio_if_missing(target_video: Path, output_video: Path) -> None:
+    if not target_video.exists() or not output_video.exists():
+        return
+    if not _has_audio_stream(target_video):
+        logger.info("target video has no audio stream; skipping audio restore")
+        return
+    if _has_audio_stream(output_video):
+        logger.info("output already contains audio stream")
+        return
+
+    remuxed = output_video.with_name(f"{output_video.stem}.with-audio{output_video.suffix}")
+    remux_cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(output_video),
+        "-i",
+        str(target_video),
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-shortest",
+        str(remuxed),
+    ]
+    _run(remux_cmd)
+    remuxed.replace(output_video)
+    logger.info("restored audio stream from target video into output")
+
+
 def run_video_swap(
     source_image: Path,
     target_video: Path,
@@ -170,6 +227,11 @@ def run_video_swap(
         retry_output = _run_swap_with_mode(face_selector_mode, retry_providers)
         if _looks_like_no_face_detected(retry_output) and face_selector_mode != "many":
             _run_swap_with_mode("many", retry_providers)
+
+    try:
+        _restore_audio_if_missing(target_video, output_video)
+    except Exception as exc:
+        logger.warning("audio restore step failed: %s", exc)
 
 
 def run_photo_sing(
