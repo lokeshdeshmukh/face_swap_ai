@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Node
+node_modules/
+.next/
+
+# Local data
+/backend/truefaceswap.db
+/data/
+*.db
+
+# OS
+.DS_Store
