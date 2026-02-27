@@ -44,7 +44,10 @@ def run_video_swap(
     reference_face_position = os.getenv("FACEFUSION_REFERENCE_FACE_POSITION", "0")
     reference_frame_number = os.getenv("FACEFUSION_REFERENCE_FRAME_NUMBER", "0")
     reference_face_distance = os.getenv("FACEFUSION_REFERENCE_FACE_DISTANCE", "0.6")
-    face_detector_model = os.getenv("FACEFUSION_FACE_DETECTOR_MODEL", "yoloface")
+    face_detector_model = os.getenv("FACEFUSION_FACE_DETECTOR_MODEL", "yolo_face")
+    # Accept common alias and normalize to FaceFusion CLI value.
+    if face_detector_model == "yoloface":
+        face_detector_model = "yolo_face"
     face_detector_size = os.getenv("FACEFUSION_FACE_DETECTOR_SIZE", "640x640")
     face_detector_score = os.getenv("FACEFUSION_FACE_DETECTOR_SCORE", "0.35")
     face_landmarker_score = os.getenv("FACEFUSION_FACE_LANDMARKER_SCORE", "0.35")
