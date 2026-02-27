@@ -2,6 +2,7 @@ FROM runpod/base:0.4.1-cuda12.1.0
 
 WORKDIR /worker
 
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git ffmpeg && \
     rm -rf /var/lib/apt/lists/*
