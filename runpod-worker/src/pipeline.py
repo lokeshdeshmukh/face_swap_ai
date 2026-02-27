@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import os
+import logging
 from pathlib import Path
 from typing import List, Optional
 
@@ -11,12 +12,32 @@ class PipelineError(RuntimeError):
     pass
 
 
+logger = logging.getLogger("runpod-worker")
+
+
 def _run(cmd: List[str], cwd: Optional[Path] = None) -> str:
-    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
-    output = f"{result.stdout}\n{result.stderr}"
-    if result.returncode != 0:
+    logger.info("running command: %s", " ".join(cmd))
+    process = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    lines: List[str] = []
+    assert process.stdout is not None
+    for raw_line in process.stdout:
+        line = raw_line.rstrip()
+        lines.append(line)
+        logger.info("[cmd] %s", line)
+
+    return_code = process.wait()
+    output = "\n".join(lines)
+    if return_code != 0:
         raise PipelineError(
-            f"command failed: {' '.join(cmd)}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+            f"command failed: {' '.join(cmd)}\nstdout+stderr:\n{output}"
         )
     return output
 
