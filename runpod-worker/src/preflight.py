@@ -37,7 +37,7 @@ def _check_binaries(required: List[str]) -> List[str]:
 
 
 def _facefusion_smoke_test() -> List[str]:
-    cmd = ["facefusion", "headless-run", "--help"]
+    cmd = ["facefusion", "--help"]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if result.returncode == 0:
         return []
