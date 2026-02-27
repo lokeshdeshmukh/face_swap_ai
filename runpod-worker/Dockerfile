@@ -18,6 +18,9 @@ RUN set -eux; \
 RUN git clone --depth 1 https://github.com/facefusion/facefusion.git /opt/facefusion && \
     cd /opt/facefusion && \
     (python3 install.py --skip-conda --onnxruntime cuda || python3 install.py --skip-conda --onnxruntime default) && \
+    python3 -m pip install --no-cache-dir opencv-python-headless==4.13.0.92 && \
+    (python3 -m pip install --no-cache-dir onnxruntime-gpu==1.24.1 || python3 -m pip install --no-cache-dir onnxruntime==1.24.1) && \
+    cd /opt/facefusion && python3 -c "import cv2, onnxruntime; print('facefusion-runtime-ok')" && \
     printf '#!/usr/bin/env bash\nexec python3 /opt/facefusion/facefusion.py "$@"\n' > /usr/local/bin/facefusion && \
     chmod +x /usr/local/bin/facefusion
 
