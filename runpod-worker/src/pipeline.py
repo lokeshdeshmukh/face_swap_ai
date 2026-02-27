@@ -3,13 +3,14 @@ from __future__ import annotations
 import shutil
 import subprocess
 from pathlib import Path
+from typing import List, Optional
 
 
 class PipelineError(RuntimeError):
     pass
 
 
-def _run(cmd: list[str], cwd: Path | None = None) -> None:
+def _run(cmd: List[str], cwd: Optional[Path] = None) -> None:
     result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
     if result.returncode != 0:
         raise PipelineError(

@@ -6,17 +6,22 @@ from pathlib import Path
 
 class StorageProvider(ABC):
     @abstractmethod
-    def persist_upload(self, job_id: str, file_name: str, content: bytes) -> Path:
+    def persist_upload(self, job_id: str, file_name: str, content: bytes) -> str:
         raise NotImplementedError
 
     @abstractmethod
-    def output_path(self, job_id: str, file_name: str) -> Path:
+    def persist_output(self, job_id: str, file_name: str, content: bytes) -> str:
         raise NotImplementedError
 
     @abstractmethod
-    def build_asset_token(self, path: Path, ttl_seconds: int) -> str:
+    def build_asset_url(self, asset_ref: str, ttl_seconds: int) -> str:
         raise NotImplementedError
 
-    @abstractmethod
+    def build_output_url(self, job_id: str, output_ref: str, ttl_seconds: int) -> str:
+        return self.build_asset_url(output_ref, ttl_seconds)
+
     def resolve_asset_token(self, token: str) -> Path:
-        raise NotImplementedError
+        raise ValueError("asset token route is only available for local storage")
+
+    def resolve_output_path(self, output_ref: str) -> Path | None:
+        return None

@@ -3,7 +3,7 @@
 This repository implements a local-first POC with production-shaped boundaries:
 - FastAPI backend (`backend/`)
 - Next.js frontend (`frontend/`)
-- Local SQLite + filesystem storage
+- Local SQLite + pluggable storage (local filesystem or S3)
 - Runpod Serverless compute integration
 
 ## Implemented APIs
@@ -20,8 +20,8 @@ This repository implements a local-first POC with production-shaped boundaries:
 1. Backend
 ```bash
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate
+python3.13 -m venv .venv313
+source .venv313/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 uvicorn app.main:app --reload --port 8000
@@ -34,7 +34,7 @@ npm install
 NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev
 ```
 
-3. Expose backend to internet for Runpod callbacks/assets
+3. For local storage mode, expose backend to internet for Runpod callbacks/assets
 - Use Cloudflare Tunnel (or equivalent) and set `PUBLIC_BASE_URL`.
 - Example: `https://abc123.trycloudflare.com`
 

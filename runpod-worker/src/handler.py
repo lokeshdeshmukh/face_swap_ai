@@ -4,14 +4,21 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
+import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 import requests
 import runpod
 
 from pipeline import PipelineError, run_4k_enhance, run_photo_sing, run_video_swap
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("runpod-worker")
 
 
 def _download(url: str, path: Path) -> None:
@@ -24,7 +31,7 @@ def _sign(secret: str, payload: bytes) -> str:
     return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
 
 
-def _callback(url: str, secret: str, body: dict[str, object]) -> None:
+def _callback(url: str, secret: str, body: Dict[str, Any]) -> None:
     raw = json.dumps(body, separators=(",", ":")).encode("utf-8")
     signature = _sign(secret, raw)
     headers = {
@@ -55,7 +62,7 @@ def _extract_audio(video_path: Path, audio_out: Path) -> None:
         raise ValueError(f"ffmpeg audio extraction failed: {result.stderr}")
 
 
-def handler(event: dict[str, object]) -> dict[str, object]:
+def handler(event: Dict[str, Any]) -> Dict[str, Any]:
     payload = event.get("input", {}) if isinstance(event, dict) else {}
     if not isinstance(payload, dict):
         raise ValueError("invalid event payload")
@@ -74,11 +81,11 @@ def handler(event: dict[str, object]) -> dict[str, object]:
         raise ValueError("assets field is required")
 
     callback = payload.get("callback")
-    if not isinstance(callback, dict):
-        raise ValueError("callback field is required")
-
-    callback_url = str(callback["url"])
-    callback_secret = str(callback["secret"])
+    callback_url: Optional[str] = None
+    callback_secret: Optional[str] = None
+    if isinstance(callback, dict) and callback.get("url") and callback.get("secret"):
+        callback_url = str(callback["url"])
+        callback_secret = str(callback["secret"])
 
     try:
         with tempfile.TemporaryDirectory(prefix="truefaceswap-") as tmp:
@@ -120,8 +127,12 @@ def handler(event: dict[str, object]) -> dict[str, object]:
                 "output_base64": output_base64,
                 "metadata": {"mode": mode, "quality": quality},
             }
-            _callback(callback_url, callback_secret, success_body)
-            return {"ok": True, "job_id": job_id, "status": "completed"}
+            if callback_url and callback_secret:
+                try:
+                    _callback(callback_url, callback_secret, success_body)
+                except requests.RequestException:
+                    pass
+            return {"ok": True, "job_id": job_id, "status": "completed", **success_body}
 
     except (requests.RequestException, PipelineError, ValueError, KeyError) as exc:
         failure_body = {
@@ -129,11 +140,23 @@ def handler(event: dict[str, object]) -> dict[str, object]:
             "status": "failed",
             "error": str(exc),
         }
-        try:
-            _callback(callback_url, callback_secret, failure_body)
-        except Exception:
-            pass
+        if callback_url and callback_secret:
+            try:
+                _callback(callback_url, callback_secret, failure_body)
+            except Exception:
+                pass
         return {"ok": False, "job_id": job_id, "error": str(exc)}
 
 
-runpod.serverless.start({"handler": handler})
+def main() -> None:
+    logger.info("worker boot: python=%s", sys.version.replace("\n", " "))
+    logger.info(
+        "worker env: endpoint_id=%s has_webhook=%s",
+        os.getenv("RUNPOD_ENDPOINT_ID", ""),
+        bool(os.getenv("RUNPOD_WEBHOOK_GET_JOB")),
+    )
+    runpod.serverless.start({"handler": handler})
+
+
+if __name__ == "__main__":
+    main()

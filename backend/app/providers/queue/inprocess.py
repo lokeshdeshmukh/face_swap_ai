@@ -37,6 +37,13 @@ class InProcessQueueProvider(QueueProvider):
             try:
                 job_id = await asyncio.wait_for(self.queue.get(), timeout=0.5)
             except asyncio.TimeoutError:
+                db = SessionLocal()
+                try:
+                    await self.job_service.poll_inflight_jobs(db)
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("inflight poll failed", extra={"error": str(exc)})
+                finally:
+                    db.close()
                 continue
 
             db: Session = SessionLocal()

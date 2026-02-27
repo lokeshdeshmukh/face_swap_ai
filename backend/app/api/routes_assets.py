@@ -13,7 +13,7 @@ def get_asset(token: str) -> FileResponse:
     try:
         path = container.storage_provider.resolve_asset_token(token)
     except ValueError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     media_type = "application/octet-stream"
     ext = path.suffix.lower()

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
@@ -104,7 +103,9 @@ def get_job_output(job_id: str, db: Session = Depends(get_db)) -> FileResponse:
     if not job or not job.output_path:
         raise HTTPException(status_code=404, detail="output not available")
 
-    path = Path(job.output_path)
+    path = container.storage_provider.resolve_output_path(job.output_path)
+    if path is None:
+        raise HTTPException(status_code=404, detail="output is not stored locally")
     if not path.exists():
         raise HTTPException(status_code=404, detail="output file missing")
 

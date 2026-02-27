@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import uuid
 from datetime import datetime
-from pathlib import Path
 
 import httpx
 from sqlalchemy import select
@@ -16,8 +16,8 @@ from app.models.job import Job
 from app.providers.compute.base import ComputeProvider
 from app.providers.storage.base import StorageProvider
 from app.schemas.job import AspectRatio, JobMode, QualityTier, RunpodCallbackPayload
-from app.services.media_validation import validate_extension, validate_file_size
-from app.utils.hash_utils import sha256_file, stable_config_hash
+from app.services.media_validation import validate_extension
+from app.utils.hash_utils import stable_config_hash
 
 logger = logging.getLogger(__name__)
 
@@ -50,21 +50,15 @@ class JobService:
     ) -> Job:
         job_id = str(uuid.uuid4())
 
-        reference_video_path = self.storage.persist_upload(job_id, reference_video_name, reference_video_bytes)
-        source_image_path = self.storage.persist_upload(job_id, source_image_name, source_image_bytes)
-        driving_audio_path = None
-        if driving_audio_name and driving_audio_bytes:
-            driving_audio_path = self.storage.persist_upload(job_id, driving_audio_name, driving_audio_bytes)
+        validate_extension(reference_video_name, "video")
+        validate_extension(source_image_name, "image")
+        if driving_audio_name:
+            validate_extension(driving_audio_name, "audio")
 
-        validate_extension(reference_video_path, "video")
-        validate_extension(source_image_path, "image")
-        if driving_audio_path:
-            validate_extension(driving_audio_path, "audio")
-
-        validate_file_size(reference_video_path)
-        validate_file_size(source_image_path)
-        if driving_audio_path:
-            validate_file_size(driving_audio_path)
+        self._validate_size(reference_video_bytes)
+        self._validate_size(source_image_bytes)
+        if driving_audio_bytes:
+            self._validate_size(driving_audio_bytes)
 
         config_hash = stable_config_hash(
             [
@@ -72,15 +66,21 @@ class JobService:
                 quality.value,
                 str(enable_4k),
                 aspect_ratio.value,
-                sha256_file(reference_video_path),
-                sha256_file(source_image_path),
-                sha256_file(driving_audio_path) if driving_audio_path else "",
+                self._sha256_bytes(reference_video_bytes),
+                self._sha256_bytes(source_image_bytes),
+                self._sha256_bytes(driving_audio_bytes) if driving_audio_bytes else "",
             ]
         )
 
         existing = self.list_existing_by_hash(db, config_hash)
         if existing and existing.status in {"queued", "processing", "done"}:
             return existing
+
+        reference_video_path = self.storage.persist_upload(job_id, reference_video_name, reference_video_bytes)
+        source_image_path = self.storage.persist_upload(job_id, source_image_name, source_image_bytes)
+        driving_audio_path = None
+        if driving_audio_name and driving_audio_bytes:
+            driving_audio_path = self.storage.persist_upload(job_id, driving_audio_name, driving_audio_bytes)
 
         now = datetime.utcnow()
         timings = {
@@ -99,9 +99,9 @@ class JobService:
             status="queued",
             stage="queued",
             stage_timings_json=json.dumps(timings),
-            reference_video_path=str(reference_video_path.resolve()),
-            source_image_path=str(source_image_path.resolve()),
-            driving_audio_path=str(driving_audio_path.resolve()) if driving_audio_path else None,
+            reference_video_path=reference_video_path,
+            source_image_path=source_image_path,
+            driving_audio_path=driving_audio_path,
         )
         db.add(job)
         db.commit()
@@ -134,13 +134,18 @@ class JobService:
         db.commit()
 
         asset_urls = {
-            "reference_video_url": self._asset_url(Path(job.reference_video_path)),
-            "source_image_url": self._asset_url(Path(job.source_image_path)),
+            "reference_video_url": self.storage.build_asset_url(
+                job.reference_video_path, settings.asset_token_ttl_seconds
+            ),
+            "source_image_url": self.storage.build_asset_url(job.source_image_path, settings.asset_token_ttl_seconds),
         }
         if job.driving_audio_path:
-            asset_urls["driving_audio_url"] = self._asset_url(Path(job.driving_audio_path))
+            asset_urls["driving_audio_url"] = self.storage.build_asset_url(
+                job.driving_audio_path, settings.asset_token_ttl_seconds
+            )
 
-        callback_url = f"{settings.public_base_url.rstrip('/')}{settings.api_prefix}/runpod/callback"
+        callback_url = self._callback_url_or_none()
+        callback_secret = settings.callback_secret if callback_url else None
 
         self._start_stage(job, "generating", "processing")
         db.add(job)
@@ -150,7 +155,7 @@ class JobService:
             job=job,
             asset_urls=asset_urls,
             callback_url=callback_url,
-            callback_secret=settings.callback_secret,
+            callback_secret=callback_secret,
         )
 
         job.runpod_job_id = runpod_job_id
@@ -158,9 +163,63 @@ class JobService:
         db.add(job)
         db.commit()
 
-    def _asset_url(self, path: Path) -> str:
-        token = self.storage.build_asset_token(path, settings.asset_token_ttl_seconds)
-        return f"{settings.public_base_url.rstrip('/')}{settings.api_prefix}/assets/{token}"
+    async def poll_inflight_jobs(self, db: Session) -> None:
+        stmt = select(Job).where(
+            Job.status == "processing",
+            Job.runpod_job_id.is_not(None),
+        )
+        jobs = db.execute(stmt).scalars().all()
+        for job in jobs:
+            if not job.runpod_job_id:
+                continue
+            await self._reconcile_runpod_status(db, job)
+
+    async def _reconcile_runpod_status(self, db: Session, job: Job) -> None:
+        if not job.runpod_job_id:
+            return
+
+        status_body = await self.compute.get_job_status(job.runpod_job_id)
+        run_status = str(status_body.get("status", "")).upper()
+
+        if run_status in {"IN_QUEUE", "IN_PROGRESS"}:
+            return
+
+        if run_status in {"FAILED", "CANCELLED", "TIMED_OUT", "NOT_FOUND"}:
+            self._start_stage(job, "failed", "failed")
+            job.error_message = str(status_body.get("error") or "runpod job failed")
+            job.finished_at = datetime.utcnow()
+            db.add(job)
+            db.commit()
+            return
+
+        if run_status != "COMPLETED":
+            return
+
+        output = status_body.get("output")
+        if not isinstance(output, dict):
+            self._start_stage(job, "failed", "failed")
+            job.error_message = "runpod completed without output payload"
+            job.finished_at = datetime.utcnow()
+            db.add(job)
+            db.commit()
+            return
+
+        if str(output.get("status", "")).lower() in {"failed", "error"}:
+            self._start_stage(job, "failed", "failed")
+            job.error_message = str(output.get("error") or "worker failed")
+            job.finished_at = datetime.utcnow()
+            db.add(job)
+            db.commit()
+            return
+
+        payload = RunpodCallbackPayload(
+            job_id=job.id,
+            status="completed",
+            output_url=output.get("output_url"),
+            output_base64=output.get("output_base64"),
+            metadata={"source": "runpod-status-poll"},
+        )
+        await self.handle_callback(db, payload)
 
     async def handle_callback(self, db: Session, payload: RunpodCallbackPayload) -> Job:
         job = db.get(Job, payload.job_id)
@@ -184,17 +243,19 @@ class JobService:
         db.add(job)
         db.commit()
 
-        output_path = self.storage.output_path(job.id, "result.mp4")
+        output_bytes: bytes
         if payload.output_base64:
-            output_path.write_bytes(base64.b64decode(payload.output_base64))
+            output_bytes = base64.b64decode(payload.output_base64)
         elif payload.output_url:
-            await self._download_to(payload.output_url, output_path)
+            output_bytes = await self._download_to_bytes(payload.output_url)
         else:
             raise ValueError("callback missing output_base64 or output_url")
 
+        output_ref = self.storage.persist_output(job.id, "result.mp4", output_bytes)
+
         self._start_stage(job, "packaging", "processing")
         self._start_stage(job, "done", "done")
-        job.output_path = str(output_path.resolve())
+        job.output_path = output_ref
         job.error_message = None
         job.finished_at = datetime.utcnow()
         db.add(job)
@@ -202,13 +263,34 @@ class JobService:
         db.refresh(job)
         return job
 
-    async def _download_to(self, url: str, target: Path) -> None:
+    async def _download_to_bytes(self, url: str) -> bytes:
         async with httpx.AsyncClient(timeout=120) as client:
             response = await client.get(url)
             response.raise_for_status()
-            target.write_bytes(response.content)
+            return response.content
 
     def build_output_url(self, job: Job) -> str | None:
         if not job.output_path:
             return None
-        return f"{settings.public_base_url.rstrip('/')}{settings.api_prefix}/jobs/{job.id}/output"
+        return self.storage.build_output_url(job.id, job.output_path, settings.output_url_ttl_seconds)
+
+    @staticmethod
+    def _sha256_bytes(content: bytes) -> str:
+        return hashlib.sha256(content).hexdigest()
+
+    @staticmethod
+    def _validate_size(content: bytes) -> None:
+        max_size = settings.max_upload_mb * 1024 * 1024
+        if len(content) > max_size:
+            raise ValueError(f"file exceeds max size: {settings.max_upload_mb}MB")
+
+    @staticmethod
+    def _callback_url_or_none() -> str | None:
+        raw = settings.public_base_url.strip()
+        if not raw:
+            return None
+        if "your-tunnel-domain.example.com" in raw:
+            return None
+        if raw.startswith("http://localhost") or raw.startswith("http://127.0.0.1"):
+            return None
+        return f"{raw.rstrip('/')}{settings.api_prefix}/runpod/callback"

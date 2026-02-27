@@ -4,6 +4,11 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load backend/.env automatically if present.
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -18,10 +23,17 @@ class Settings:
     outputs_dir_name: str = "outputs"
 
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./truefaceswap.db")
+    storage_backend: str = os.getenv("STORAGE_BACKEND", "local").lower()
 
     public_base_url: str = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
     asset_token_secret: str = os.getenv("ASSET_TOKEN_SECRET", "change-me-asset-secret")
     asset_token_ttl_seconds: int = int(os.getenv("ASSET_TOKEN_TTL_SECONDS", "900"))
+    output_url_ttl_seconds: int = int(os.getenv("OUTPUT_URL_TTL_SECONDS", "3600"))
+
+    aws_profile: str = os.getenv("AWS_PROFILE", "schoollm")
+    s3_region: str = os.getenv("S3_REGION", "us-east-1")
+    s3_bucket: str = os.getenv("S3_BUCKET", "")
+    s3_prefix: str = os.getenv("S3_PREFIX", "truefaceswapvideo")
 
     runpod_enabled: bool = os.getenv("RUNPOD_ENABLED", "true").lower() == "true"
     runpod_api_key: str = os.getenv("RUNPOD_API_KEY", "")

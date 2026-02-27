@@ -1,27 +1,24 @@
-# Backend (FastAPI + SQLite + Local Filesystem + Runpod Serverless)
+# Backend (FastAPI + SQLite + Local/S3 Storage + Runpod Serverless)
 
 ## Run
 
 ```bash
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate
+python3.13 -m venv .venv313
+source .venv313/bin/activate
 pip install -r requirements.txt
+cp .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
 
-## Required env vars
+## Storage modes
 
-```bash
-export PUBLIC_BASE_URL="https://your-cloudflare-tunnel.example.com"
-export RUNPOD_ENABLED="true"
-export RUNPOD_API_KEY="..."
-export RUNPOD_ENDPOINT_ID="..."
-export CALLBACK_SECRET="..."
-export ASSET_TOKEN_SECRET="..."
-```
-
-`PUBLIC_BASE_URL` must be publicly reachable so Runpod can fetch `/v1/assets/{token}` and call `/v1/runpod/callback`.
+- `STORAGE_BACKEND=local`:
+  - assets are served from `/v1/assets/{token}`
+  - requires `PUBLIC_BASE_URL` reachable by Runpod
+- `STORAGE_BACKEND=s3`:
+  - assets/outputs are stored in S3 and shared via presigned URLs
+  - set `AWS_PROFILE`, `S3_REGION`, `S3_BUCKET`, `S3_PREFIX`
 
 ## API
 

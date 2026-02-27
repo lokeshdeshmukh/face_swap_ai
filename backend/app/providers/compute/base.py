@@ -11,8 +11,12 @@ class ComputeProvider(ABC):
         self,
         job: Job,
         asset_urls: dict[str, str],
-        callback_url: str,
-        callback_secret: str,
+        callback_url: str | None,
+        callback_secret: str | None,
     ) -> tuple[str | None, str | None]:
         """Returns (runpod_job_id, request_id)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_job_status(self, runpod_job_id: str) -> dict[str, object]:
         raise NotImplementedError
