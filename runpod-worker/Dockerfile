@@ -3,6 +3,8 @@ FROM runpod/base:0.4.1-cuda12.1.0
 WORKDIR /worker
 
 ARG FACEFUSION_REF=3.5.3
+ARG ONNXRUNTIME_VERSION=1.23.2
+ARG SCIPY_PY310_VERSION=1.15.3
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git ffmpeg && \
@@ -19,12 +21,13 @@ RUN set -eux; \
 RUN git clone --depth 1 --branch "${FACEFUSION_REF}" https://github.com/facefusion/facefusion.git /opt/facefusion
 
 RUN set -eux; \
+    find /opt/facefusion -type f -name "requirements*.txt" -print0 | xargs -0 sed -i "s/scipy==1.17.0/scipy==${SCIPY_PY310_VERSION}/g"; \
     cd /opt/facefusion; \
     (python3 install.py --skip-conda --onnxruntime cuda || python3 install.py --skip-conda --onnxruntime default)
 
 RUN set -eux; \
     python3 -m pip install --no-cache-dir opencv-python-headless==4.13.0.92; \
-    (python3 -m pip install --no-cache-dir onnxruntime-gpu==1.24.1 || python3 -m pip install --no-cache-dir onnxruntime==1.24.1)
+    (python3 -m pip install --no-cache-dir "onnxruntime-gpu==${ONNXRUNTIME_VERSION}" || python3 -m pip install --no-cache-dir "onnxruntime==${ONNXRUNTIME_VERSION}")
 
 RUN set -eux; \
     python3 -c "import cv2, onnxruntime; print('facefusion-runtime-ok')"
