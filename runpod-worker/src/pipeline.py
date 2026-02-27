@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import os
 from pathlib import Path
 from typing import List, Optional
 
@@ -31,7 +32,7 @@ def run_video_swap(
     if shutil.which("facefusion") is None:
         raise PipelineError("facefusion executable not found in worker image")
 
-    execution_provider = "cuda"
+    execution_provider = os.getenv("FACEFUSION_EXECUTION_PROVIDER", "cuda")
     model = "inswapper_128"
     if quality == "max":
         model = "inswapper-512-live"

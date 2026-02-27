@@ -16,7 +16,8 @@ RUN set -eux; \
     python3 -c "import requests, runpod; print('deps-ok')"
 
 RUN git clone --depth 1 https://github.com/facefusion/facefusion.git /opt/facefusion && \
-    python3 -m pip install --no-cache-dir -r /opt/facefusion/requirements.txt && \
+    cd /opt/facefusion && \
+    (python3 install.py --skip-conda --onnxruntime cuda || python3 install.py --skip-conda --onnxruntime default) && \
     printf '#!/usr/bin/env bash\nexec python3 /opt/facefusion/facefusion.py "$@"\n' > /usr/local/bin/facefusion && \
     chmod +x /usr/local/bin/facefusion
 
