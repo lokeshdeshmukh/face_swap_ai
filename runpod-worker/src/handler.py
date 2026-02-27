@@ -23,6 +23,59 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("runpod-worker")
 
 
+def _format_bytes(total_bytes: int) -> str:
+    units = ["B", "KB", "MB", "GB", "TB"]
+    value = float(total_bytes)
+    unit = units[0]
+    for candidate in units:
+        unit = candidate
+        if value < 1024.0 or candidate == units[-1]:
+            break
+        value /= 1024.0
+    return f"{value:.2f} {unit}"
+
+
+def _dir_stats(path: Path, file_limit: int = 200000) -> tuple[int, int, bool]:
+    file_count = 0
+    total_bytes = 0
+    truncated = False
+    for root, _, files in os.walk(path):
+        root_path = Path(root)
+        for file_name in files:
+            file_count += 1
+            try:
+                total_bytes += (root_path / file_name).stat().st_size
+            except OSError:
+                pass
+            if file_count >= file_limit:
+                truncated = True
+                return file_count, total_bytes, truncated
+    return file_count, total_bytes, truncated
+
+
+def _log_cache_inventory(cache_root: Path) -> None:
+    directories = {
+        "xdg": cache_root / "xdg",
+        "huggingface": cache_root / "huggingface",
+        "torch": cache_root / "torch",
+        "facefusion": cache_root / "facefusion",
+    }
+    logger.info("cache inventory root: %s", cache_root)
+    for name, path in directories.items():
+        if not path.exists():
+            logger.info("cache inventory: %s missing", name)
+            continue
+        files, bytes_used, truncated = _dir_stats(path)
+        suffix = " (truncated)" if truncated else ""
+        logger.info(
+            "cache inventory: %s files=%d size=%s%s",
+            name,
+            files,
+            _format_bytes(bytes_used),
+            suffix,
+        )
+
+
 def _configure_persistent_cache() -> None:
     volume_root = Path(os.getenv("RUNPOD_VOLUME_PATH", "/runpod-volume"))
     if not volume_root.exists() or not volume_root.is_dir():
@@ -59,6 +112,7 @@ def _configure_persistent_cache() -> None:
         root_facefusion_home.symlink_to(facefusion_home, target_is_directory=True)
 
     logger.info("persistent cache enabled at %s", cache_root)
+    _log_cache_inventory(cache_root)
 
 
 def _download(url: str, path: Path) -> None:
