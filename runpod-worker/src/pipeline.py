@@ -29,8 +29,9 @@ def run_video_swap(
     Requires a FaceFusion installation available in PATH.
     The command is an example template and may need adaptation to your exact image.
     """
-    if shutil.which("facefusion") is None:
-        raise PipelineError("facefusion executable not found in worker image")
+    facefusion_entry = Path("/opt/facefusion/facefusion.py")
+    if not facefusion_entry.exists():
+        raise PipelineError("facefusion entrypoint not found in worker image")
 
     execution_provider = os.getenv("FACEFUSION_EXECUTION_PROVIDER", "cuda")
     model = "inswapper_128"
@@ -38,7 +39,8 @@ def run_video_swap(
         model = "simswap_unofficial_512"
 
     cmd = [
-        "facefusion",
+        "python3",
+        str(facefusion_entry),
         "headless-run",
         "--processors",
         "face_swapper",

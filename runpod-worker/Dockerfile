@@ -34,7 +34,7 @@ RUN set -eux; \
     python3 -c "import cv2, onnxruntime, scipy; print('facefusion-runtime-ok')"
 
 RUN set -eux; \
-    printf '#!/usr/bin/env bash\nexec python3 /opt/facefusion/facefusion.py \"$@\"\n' > /usr/local/bin/facefusion; \
+    printf '#!/usr/bin/env bash\nexec python3 /opt/facefusion/facefusion.py "$@"\n' > /usr/local/bin/facefusion; \
     chmod +x /usr/local/bin/facefusion; \
     test -x /usr/local/bin/facefusion
 
