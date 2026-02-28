@@ -257,8 +257,8 @@ def run_video_swap(
     output_video_encoder = _profile_env("FACEFUSION_OUTPUT_VIDEO_ENCODER", "h264_nvenc")
     log_level = os.getenv("FACEFUSION_LOG_LEVEL", "info")
 
-    # Prefer stronger identity lock at max quality.
-    default_model = "inswapper_128" if is_max_quality else "inswapper_128_fp16"
+    # Prefer sharper results at max quality.
+    default_model = "simswap_unofficial_512" if is_max_quality else "inswapper_128_fp16"
     model = _profile_env("FACEFUSION_MODEL", default_model)
 
     common_cmd = [
