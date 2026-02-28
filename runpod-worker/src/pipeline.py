@@ -248,6 +248,7 @@ def run_video_swap(
     face_swapper_pixel_boost = _normalize_pixel_boost(
         _profile_env("FACEFUSION_FACE_SWAPPER_PIXEL_BOOST", "1024x1024" if is_max_quality else "768x768")
     )
+    output_video_encoder = _profile_env("FACEFUSION_OUTPUT_VIDEO_ENCODER", "h264_nvenc")
     log_level = os.getenv("FACEFUSION_LOG_LEVEL", "info")
 
     model = _profile_env("FACEFUSION_MODEL", "inswapper_128_fp16")
@@ -276,6 +277,8 @@ def run_video_swap(
         face_swapper_weight,
         "--face-swapper-pixel-boost",
         face_swapper_pixel_boost,
+        "--output-video-encoder",
+        output_video_encoder,
         "--log-level",
         log_level,
     ]

@@ -33,10 +33,12 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - Worker retries once with `github` automatically if model source validation fails.
 - Video swap realism/speed can be tuned with:
   - `FACEFUSION_MODEL` (default: `inswapper_128_fp16`)
+  - `FACEFUSION_OUTPUT_VIDEO_ENCODER` (default: `h264_nvenc`)
   - `FACEFUSION_FACE_SWAPPER_WEIGHT` (balanced default: `0.85`, max default: `0.90`)
   - `FACEFUSION_FACE_SWAPPER_PIXEL_BOOST` (balanced default: `768x768`, max default: `1024x1024`)
   - You can override by quality using suffixes:
     - `FACEFUSION_MODEL_BALANCED`, `FACEFUSION_MODEL_MAX`
+    - `FACEFUSION_OUTPUT_VIDEO_ENCODER_BALANCED`, `FACEFUSION_OUTPUT_VIDEO_ENCODER_MAX`
     - `FACEFUSION_FACE_SWAPPER_WEIGHT_BALANCED`, `FACEFUSION_FACE_SWAPPER_WEIGHT_MAX`
     - `FACEFUSION_FACE_SWAPPER_PIXEL_BOOST_BALANCED`, `FACEFUSION_FACE_SWAPPER_PIXEL_BOOST_MAX`
 - Adaptive selector probe can be tuned with:
