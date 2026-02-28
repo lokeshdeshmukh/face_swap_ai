@@ -44,6 +44,7 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
 - Adaptive selector probe can be tuned with:
   - `FACEFUSION_ADAPTIVE_SELECTOR=true` (default)
   - `FACEFUSION_PROBE_FRAMES=72` (default)
+  - `FACEFUSION_PROBE_MIN_DURATION_SECONDS=6` (default; probe auto-skips for shorter videos)
   - `FACEFUSION_SELECTOR_CANDIDATES="one reference many"` (default)
 - To make optional tools mandatory at startup, set env vars:
   - `REQUIRE_PHOTO_SING_DEPS=true`
