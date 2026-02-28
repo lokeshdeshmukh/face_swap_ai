@@ -198,7 +198,7 @@ def run_video_swap(
         raise PipelineError("at least one source image is required for video_swap")
 
     quality_key = (quality or "balanced").strip().lower()
-    is_max_quality = quality_key == "max"
+    is_max_quality = quality_key in {"max", "high"}
 
     def _profile_env(base_name: str, default: str) -> str:
         quality_name = f"{base_name}_{quality_key.upper()}"
@@ -243,17 +243,18 @@ def run_video_swap(
     if face_detector_model == "yoloface":
         face_detector_model = "yolo_face"
     face_detector_size = os.getenv("FACEFUSION_FACE_DETECTOR_SIZE", "640x640")
-    face_detector_score = _profile_env("FACEFUSION_FACE_DETECTOR_SCORE", "0.25" if is_max_quality else "0.30")
-    face_landmarker_score = _profile_env("FACEFUSION_FACE_LANDMARKER_SCORE", "0.25" if is_max_quality else "0.30")
+    face_detector_score = _profile_env("FACEFUSION_FACE_DETECTOR_SCORE", "0.20" if is_max_quality else "0.30")
+    face_landmarker_score = _profile_env("FACEFUSION_FACE_LANDMARKER_SCORE", "0.20" if is_max_quality else "0.30")
     face_detector_angles = os.getenv("FACEFUSION_FACE_DETECTOR_ANGLES", "0 90 180 270").split()
-    face_swapper_weight = _profile_env("FACEFUSION_FACE_SWAPPER_WEIGHT", "0.90" if is_max_quality else "0.85")
+    face_swapper_weight = _profile_env("FACEFUSION_FACE_SWAPPER_WEIGHT", "1.00" if is_max_quality else "0.85")
     face_swapper_pixel_boost = _normalize_pixel_boost(
         _profile_env("FACEFUSION_FACE_SWAPPER_PIXEL_BOOST", "1024x1024" if is_max_quality else "768x768")
     )
     output_video_encoder = _profile_env("FACEFUSION_OUTPUT_VIDEO_ENCODER", "h264_nvenc")
     log_level = os.getenv("FACEFUSION_LOG_LEVEL", "info")
 
-    model = _profile_env("FACEFUSION_MODEL", "inswapper_128_fp16")
+    default_model = "simswap_unofficial_512" if is_max_quality else "inswapper_128_fp16"
+    model = _profile_env("FACEFUSION_MODEL", default_model)
 
     common_cmd = [
         "python3",

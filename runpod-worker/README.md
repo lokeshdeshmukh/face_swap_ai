@@ -32,9 +32,9 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - `FACEFUSION_DOWNLOAD_PROVIDERS="huggingface github"` (default)
   - Worker retries once with `github` automatically if model source validation fails.
 - Video swap realism/speed can be tuned with:
-  - `FACEFUSION_MODEL` (default: `inswapper_128_fp16`)
+  - `FACEFUSION_MODEL` (default by quality: `inswapper_128_fp16` for `fast`/`balanced`, `simswap_unofficial_512` for `max`)
   - `FACEFUSION_OUTPUT_VIDEO_ENCODER` (default: `h264_nvenc`)
-  - `FACEFUSION_FACE_SWAPPER_WEIGHT` (balanced default: `0.85`, max default: `0.90`)
+  - `FACEFUSION_FACE_SWAPPER_WEIGHT` (balanced default: `0.85`, max default: `1.00`)
   - `FACEFUSION_FACE_SWAPPER_PIXEL_BOOST` (balanced default: `768x768`, max default: `1024x1024`)
   - You can override by quality using suffixes:
     - `FACEFUSION_MODEL_BALANCED`, `FACEFUSION_MODEL_MAX`
