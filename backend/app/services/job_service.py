@@ -91,7 +91,9 @@ class JobService:
         )
 
         existing = self.list_existing_by_hash(db, config_hash)
-        if existing and existing.status in {"queued", "processing", "done"}:
+        # Reuse only inflight jobs for identical payloads.
+        # Completed jobs should produce a fresh job id so users can rerun intentionally.
+        if existing and existing.status in {"queued", "processing"}:
             return existing
 
         reference_video_path = self.storage.persist_upload(job_id, reference_video_name, reference_video_bytes)

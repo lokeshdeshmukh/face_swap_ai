@@ -212,7 +212,9 @@ def run_video_swap(
         download_providers = ["huggingface", "github"]
     preferred_download_provider = download_providers[0]
 
-    face_selector_mode = os.getenv("FACEFUSION_FACE_SELECTOR_MODE", "one")
+    # Reference mode is more stable for single-subject target videos and
+    # reduces identity switching/flicker across frames.
+    face_selector_mode = os.getenv("FACEFUSION_FACE_SELECTOR_MODE", "reference")
     if face_selector_mode not in VALID_SELECTOR_MODES:
         logger.warning("invalid FACEFUSION_FACE_SELECTOR_MODE=%s; falling back to one", face_selector_mode)
         face_selector_mode = "one"
@@ -227,7 +229,7 @@ def run_video_swap(
     selector_candidates = _dedupe_preserve_order(
         os.getenv(
             "FACEFUSION_SELECTOR_CANDIDATES",
-            f"{face_selector_mode} reference many",
+            f"{face_selector_mode} one many",
         ).split()
     )
     selector_candidates = [mode for mode in selector_candidates if mode in VALID_SELECTOR_MODES]
@@ -237,7 +239,7 @@ def run_video_swap(
     face_selector_order = os.getenv("FACEFUSION_FACE_SELECTOR_ORDER", "large-small")
     reference_face_position = os.getenv("FACEFUSION_REFERENCE_FACE_POSITION", "0")
     reference_frame_number = os.getenv("FACEFUSION_REFERENCE_FRAME_NUMBER", "0")
-    reference_face_distance = os.getenv("FACEFUSION_REFERENCE_FACE_DISTANCE", "0.6")
+    reference_face_distance = os.getenv("FACEFUSION_REFERENCE_FACE_DISTANCE", "0.45")
     face_detector_model = os.getenv("FACEFUSION_FACE_DETECTOR_MODEL", "yolo_face")
     # Accept common alias and normalize to FaceFusion CLI value.
     if face_detector_model == "yoloface":
@@ -245,7 +247,9 @@ def run_video_swap(
     face_detector_size = os.getenv("FACEFUSION_FACE_DETECTOR_SIZE", "640x640")
     face_detector_score = _profile_env("FACEFUSION_FACE_DETECTOR_SCORE", "0.20" if is_max_quality else "0.30")
     face_landmarker_score = _profile_env("FACEFUSION_FACE_LANDMARKER_SCORE", "0.20" if is_max_quality else "0.30")
-    face_detector_angles = os.getenv("FACEFUSION_FACE_DETECTOR_ANGLES", "0 90 180 270").split()
+    # Single-angle detection is typically less jittery than multi-angle for
+    # normal portrait footage.
+    face_detector_angles = os.getenv("FACEFUSION_FACE_DETECTOR_ANGLES", "0").split()
     face_swapper_weight = _profile_env("FACEFUSION_FACE_SWAPPER_WEIGHT", "1.00" if is_max_quality else "0.85")
     face_swapper_pixel_boost = _normalize_pixel_boost(
         _profile_env("FACEFUSION_FACE_SWAPPER_PIXEL_BOOST", "1024x1024" if is_max_quality else "768x768")
@@ -253,7 +257,8 @@ def run_video_swap(
     output_video_encoder = _profile_env("FACEFUSION_OUTPUT_VIDEO_ENCODER", "h264_nvenc")
     log_level = os.getenv("FACEFUSION_LOG_LEVEL", "info")
 
-    default_model = "simswap_unofficial_512" if is_max_quality else "inswapper_128_fp16"
+    # Prefer stronger identity lock at max quality.
+    default_model = "inswapper_128" if is_max_quality else "inswapper_128_fp16"
     model = _profile_env("FACEFUSION_MODEL", default_model)
 
     common_cmd = [
