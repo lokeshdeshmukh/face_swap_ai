@@ -7,7 +7,7 @@ ARG ONNXRUNTIME_VERSION=1.23.2
 ARG SCIPY_PY310_VERSION=1.15.3
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git ffmpeg && \
+    apt-get install -y --no-install-recommends git ffmpeg libcudnn9-cuda-12 && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /worker/requirements.txt
@@ -33,6 +33,7 @@ RUN set -eux; \
 
 RUN set -eux; \
     python3 -c "import cv2, onnxruntime, scipy, onnx; print('facefusion-runtime-ok')"; \
+    python3 -c "import onnxruntime as ort; p=ort.get_available_providers(); print('onnxruntime providers:', p); assert 'CUDAExecutionProvider' in p, p"; \
     cd /opt/facefusion; \
     python3 -c "import facefusion.processors.modules.face_swapper.core as _m; print('face_swapper-import-ok')"
 

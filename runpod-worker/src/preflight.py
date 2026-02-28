@@ -46,6 +46,19 @@ def _check_facefusion_processor_import() -> List[str]:
         return [f"cannot import facefusion face_swapper processor: {exc}"]
 
 
+def _check_onnxruntime_cuda_provider() -> List[str]:
+    try:
+        ort = importlib.import_module("onnxruntime")
+        providers = list(ort.get_available_providers())
+    except Exception as exc:  # pragma: no cover - defensive in container
+        return [f"cannot inspect onnxruntime providers: {exc}"]
+
+    execution_provider = os.getenv("FACEFUSION_EXECUTION_PROVIDER", "cuda").strip().lower()
+    if execution_provider == "cuda" and "CUDAExecutionProvider" not in providers:
+        return [f"onnxruntime cuda provider not available (providers={providers})"]
+    return []
+
+
 def run_preflight() -> Dict[str, object]:
     errors: List[str] = []
     warnings: List[str] = []
@@ -53,6 +66,7 @@ def run_preflight() -> Dict[str, object]:
     errors.extend(_check_python_modules(["requests", "runpod", "cv2", "onnxruntime", "scipy", "onnx"]))
     errors.extend(_check_binaries(["ffmpeg", "facefusion"]))
     errors.extend(_check_facefusion_processor_import())
+    errors.extend(_check_onnxruntime_cuda_provider())
 
     require_photo_sing = _env_bool("REQUIRE_PHOTO_SING_DEPS", False)
     photo_sing_missing = _check_binaries(["liveportrait", "musetalk"])
