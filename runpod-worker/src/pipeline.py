@@ -112,33 +112,6 @@ def _has_audio_stream(video_path: Path) -> bool:
     return "audio" in result.stdout.lower()
 
 
-def _get_video_duration_seconds(video_path: Path) -> float | None:
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(video_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        logger.warning("ffprobe duration failed for %s: %s", video_path, result.stderr.strip())
-        return None
-    raw = result.stdout.strip()
-    if not raw:
-        return None
-    try:
-        return float(raw)
-    except ValueError:
-        return None
-
-
 def _restore_audio_if_missing(target_video: Path, output_video: Path) -> None:
     if not target_video.exists() or not output_video.exists():
         return
@@ -250,12 +223,6 @@ def run_video_swap(
         probe_frames = 72
     if probe_frames < 1:
         adaptive_selector_enabled = False
-    try:
-        probe_min_duration_seconds = float(os.getenv("FACEFUSION_PROBE_MIN_DURATION_SECONDS", "6"))
-    except ValueError:
-        probe_min_duration_seconds = 6.0
-    if probe_min_duration_seconds < 0:
-        probe_min_duration_seconds = 0.0
 
     selector_candidates = _dedupe_preserve_order(
         os.getenv(
@@ -366,14 +333,6 @@ def run_video_swap(
 
     def _select_mode(provider_values: List[str]) -> str:
         if not adaptive_selector_enabled:
-            return face_selector_mode
-        duration_seconds = _get_video_duration_seconds(target_video)
-        if duration_seconds is not None and duration_seconds < probe_min_duration_seconds:
-            logger.info(
-                "adaptive probe skipped: video duration %.2fs < %.2fs",
-                duration_seconds,
-                probe_min_duration_seconds,
-            )
             return face_selector_mode
         probe_output = output_video.with_name(f"{output_video.stem}.probe.mp4")
         try:
