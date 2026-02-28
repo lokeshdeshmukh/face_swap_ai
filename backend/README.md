@@ -23,6 +23,12 @@ uvicorn app.main:app --reload --port 8000
 ## API
 
 - `POST /v1/jobs`
+  - required form fields: `mode`, `reference_video`
+  - source input options:
+    - `source_images` (repeatable file field; one or more images)
+    - `source_video` (optional video; frames are sampled in worker)
+    - legacy `source_image` (single file) remains supported
+  - optional: `driving_audio` (for `photo_sing`)
 - `GET /v1/jobs/{id}`
 - `POST /v1/jobs/{id}/retry`
 - `GET /v1/jobs/{id}/output`

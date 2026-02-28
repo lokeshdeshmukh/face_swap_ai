@@ -156,6 +156,47 @@ def _extract_audio(video_path: Path, audio_out: Path) -> None:
         raise ValueError(f"ffmpeg audio extraction failed: {result.stderr}")
 
 
+def _extract_source_frames(source_video: Path, frames_dir: Path, max_frames: int, fps: float) -> list[Path]:
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    pattern = frames_dir / "source_%03d.jpg"
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(source_video),
+        "-vf",
+        f"fps={fps}",
+        "-frames:v",
+        str(max_frames),
+        str(pattern),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise ValueError(f"ffmpeg source frame extraction failed: {result.stderr}")
+    frames = sorted(frames_dir.glob("source_*.jpg"))
+    if not frames:
+        raise ValueError("no source frames could be extracted from source video")
+    return frames
+
+
+def _extract_first_frame(source_video: Path, out_path: Path) -> Path:
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(source_video),
+        "-frames:v",
+        "1",
+        str(out_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise ValueError(f"ffmpeg first-frame extraction failed: {result.stderr}")
+    if not out_path.exists():
+        raise ValueError("first frame extraction produced no output")
+    return out_path
+
+
 def _upload_file(url: str, path: Path, content_type: str) -> None:
     with path.open("rb") as f:
         response = requests.put(url, data=f, headers={"Content-Type": content_type}, timeout=600)
@@ -203,22 +244,61 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
         with tempfile.TemporaryDirectory(prefix="truefaceswap-") as tmp:
             tmp_path = Path(tmp)
             reference_video = tmp_path / "reference.mp4"
-            source_image = tmp_path / "source.jpg"
+            source_video = tmp_path / "source_video.mp4"
             driving_audio = tmp_path / "driving_audio.wav"
             out_main = tmp_path / "result.mp4"
+            source_images: list[Path] = []
 
             _download(str(assets["reference_video_url"]), reference_video)
-            _download(str(assets["source_image_url"]), source_image)
+
+            source_image_urls = assets.get("source_image_urls")
+            if isinstance(source_image_urls, list):
+                for idx, item in enumerate(source_image_urls):
+                    if not item:
+                        continue
+                    image_path = tmp_path / f"source_{idx:03d}.jpg"
+                    _download(str(item), image_path)
+                    source_images.append(image_path)
+            elif source_image_urls is not None:
+                raise ValueError("source_image_urls must be a list of URLs")
+
+            source_image_url = assets.get("source_image_url")
+            if source_image_url and not source_images:
+                legacy_source = tmp_path / "source_legacy.jpg"
+                _download(str(source_image_url), legacy_source)
+                source_images.append(legacy_source)
+
+            source_video_url = assets.get("source_video_url")
+            has_source_video = bool(source_video_url)
+            if has_source_video:
+                _download(str(source_video_url), source_video)
+                max_frames = int(os.getenv("SOURCE_VIDEO_MAX_FRAMES", "24"))
+                fps = float(os.getenv("SOURCE_VIDEO_SAMPLE_FPS", "2.0"))
+                extracted = _extract_source_frames(source_video, tmp_path / "source_frames", max_frames=max_frames, fps=fps)
+                source_images.extend(extracted)
+
+            if mode == "video_swap" and not source_images:
+                raise ValueError("video_swap requires source_image(s) or source_video")
 
             if mode == "video_swap":
-                run_video_swap(source_image=source_image, target_video=reference_video, output_video=out_main, quality=quality)
+                run_video_swap(
+                    source_images=source_images,
+                    target_video=reference_video,
+                    output_video=out_main,
+                    quality=quality,
+                )
             elif mode == "photo_sing":
+                photo_source_image: Path | None = source_images[0] if source_images else None
+                if photo_source_image is None and has_source_video:
+                    photo_source_image = _extract_first_frame(source_video, tmp_path / "source_from_video.jpg")
+                if photo_source_image is None:
+                    raise ValueError("photo_sing requires source_image(s) or source_video")
                 if "driving_audio_url" in assets:
                     _download(str(assets["driving_audio_url"]), driving_audio)
                 else:
                     _extract_audio(reference_video, driving_audio)
                 run_photo_sing(
-                    source_image=source_image,
+                    source_image=photo_source_image,
                     driving_video=reference_video,
                     driving_audio=driving_audio,
                     output_video=out_main,

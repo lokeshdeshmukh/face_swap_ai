@@ -15,7 +15,8 @@ export default function HomePage() {
   const [enable4k, setEnable4k] = useState(false);
 
   const [referenceVideo, setReferenceVideo] = useState<File | null>(null);
-  const [sourceImage, setSourceImage] = useState<File | null>(null);
+  const [sourceImages, setSourceImages] = useState<File[]>([]);
+  const [sourceVideo, setSourceVideo] = useState<File | null>(null);
   const [drivingAudio, setDrivingAudio] = useState<File | null>(null);
 
   const [jobId, setJobId] = useState<string | null>(null);
@@ -64,8 +65,8 @@ export default function HomePage() {
     event.preventDefault();
     setError(null);
 
-    if (!referenceVideo || !sourceImage) {
-      setError("Reference video and source image are required.");
+    if (!referenceVideo || (sourceImages.length === 0 && !sourceVideo)) {
+      setError("Reference video and at least one source image or source video are required.");
       return;
     }
 
@@ -75,7 +76,8 @@ export default function HomePage() {
     form.append("enable_4k", String(enable4k));
     form.append("aspect_ratio", aspectRatio);
     form.append("reference_video", referenceVideo);
-    form.append("source_image", sourceImage);
+    sourceImages.forEach((file) => form.append("source_images", file));
+    if (sourceVideo) form.append("source_video", sourceVideo);
     if (drivingAudio) form.append("driving_audio", drivingAudio);
 
     setIsSubmitting(true);
@@ -156,13 +158,30 @@ export default function HomePage() {
           </div>
 
           <div>
-            <label htmlFor="source">Source Image</label>
+            <label htmlFor="sourceImages">Source Images (multiple allowed)</label>
             <input
-              id="source"
+              id="sourceImages"
               type="file"
               accept="image/*"
-              onChange={(e) => setSourceImage(e.target.files?.[0] ?? null)}
+              multiple
+              onChange={(e) => setSourceImages(Array.from(e.target.files ?? []))}
             />
+            <p className="muted" style={{ marginTop: 6 }}>
+              {sourceImages.length > 0 ? `${sourceImages.length} image(s) selected` : "No source images selected"}
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="sourceVideo">Source Video (optional, recommended)</label>
+            <input
+              id="sourceVideo"
+              type="file"
+              accept="video/*"
+              onChange={(e) => setSourceVideo(e.target.files?.[0] ?? null)}
+            />
+            <p className="muted" style={{ marginTop: 6 }}>
+              {sourceVideo ? sourceVideo.name : "No source video selected"}
+            </p>
           </div>
 
           <div>

@@ -15,7 +15,7 @@ class RunpodComputeProvider(ComputeProvider):
     async def submit_job(
         self,
         job: Job,
-        asset_urls: dict[str, str],
+        asset_urls: dict[str, object],
         output_target: dict[str, str] | None,
         callback_url: str | None,
         callback_secret: str | None,

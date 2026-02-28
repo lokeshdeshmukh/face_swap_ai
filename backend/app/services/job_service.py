@@ -6,6 +6,7 @@ import json
 import logging
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 import httpx
 from sqlalchemy import select
@@ -50,20 +51,29 @@ class JobService:
         aspect_ratio: AspectRatio,
         reference_video_name: str,
         reference_video_bytes: bytes,
-        source_image_name: str,
-        source_image_bytes: bytes,
+        source_images: list[tuple[str, bytes]],
+        source_video_name: str | None,
+        source_video_bytes: bytes | None,
         driving_audio_name: str | None,
         driving_audio_bytes: bytes | None,
     ) -> Job:
         job_id = str(uuid.uuid4())
 
         validate_extension(reference_video_name, "video")
-        validate_extension(source_image_name, "image")
+        if not source_images and not source_video_bytes:
+            raise ValueError("at least one source image or a source video is required")
+        for source_image_name, _ in source_images:
+            validate_extension(source_image_name, "image")
+        if source_video_name and source_video_bytes:
+            validate_extension(source_video_name, "video")
         if driving_audio_name:
             validate_extension(driving_audio_name, "audio")
 
         self._validate_size(reference_video_bytes)
-        self._validate_size(source_image_bytes)
+        for _, source_image_bytes in source_images:
+            self._validate_size(source_image_bytes)
+        if source_video_bytes:
+            self._validate_size(source_video_bytes)
         if driving_audio_bytes:
             self._validate_size(driving_audio_bytes)
 
@@ -74,7 +84,8 @@ class JobService:
                 str(enable_4k),
                 aspect_ratio.value,
                 self._sha256_bytes(reference_video_bytes),
-                self._sha256_bytes(source_image_bytes),
+                ",".join(self._sha256_bytes(source_image_bytes) for _, source_image_bytes in source_images),
+                self._sha256_bytes(source_video_bytes) if source_video_bytes else "",
                 self._sha256_bytes(driving_audio_bytes) if driving_audio_bytes else "",
             ]
         )
@@ -84,7 +95,22 @@ class JobService:
             return existing
 
         reference_video_path = self.storage.persist_upload(job_id, reference_video_name, reference_video_bytes)
-        source_image_path = self.storage.persist_upload(job_id, source_image_name, source_image_bytes)
+        source_image_refs: list[str] = []
+        for idx, (source_image_name, source_image_bytes) in enumerate(source_images):
+            ext = Path(source_image_name).suffix.lower() or ".jpg"
+            stored_name = f"source_{idx:03d}{ext}"
+            source_image_refs.append(self.storage.persist_upload(job_id, stored_name, source_image_bytes))
+
+        source_video_ref = None
+        if source_video_name and source_video_bytes:
+            ext = Path(source_video_name).suffix.lower() or ".mp4"
+            source_video_ref = self.storage.persist_upload(job_id, f"source_video{ext}", source_video_bytes)
+
+        source_manifest = self._build_source_manifest(
+            primary_image_ref=source_image_refs[0] if source_image_refs else None,
+            source_image_refs=source_image_refs,
+            source_video_ref=source_video_ref,
+        )
         driving_audio_path = None
         if driving_audio_name and driving_audio_bytes:
             driving_audio_path = self.storage.persist_upload(job_id, driving_audio_name, driving_audio_bytes)
@@ -107,7 +133,7 @@ class JobService:
             stage="queued",
             stage_timings_json=json.dumps(timings),
             reference_video_path=reference_video_path,
-            source_image_path=source_image_path,
+            source_image_path=source_manifest,
             driving_audio_path=driving_audio_path,
         )
         db.add(job)
@@ -140,12 +166,26 @@ class JobService:
         db.add(job)
         db.commit()
 
-        asset_urls = {
+        source_image_refs, source_video_ref = self._parse_source_manifest(job.source_image_path)
+        if not source_image_refs and not source_video_ref:
+            raise RuntimeError("job has no source assets")
+
+        asset_urls: dict[str, object] = {
             "reference_video_url": self.storage.build_asset_url(
                 job.reference_video_path, settings.asset_token_ttl_seconds
             ),
-            "source_image_url": self.storage.build_asset_url(job.source_image_path, settings.asset_token_ttl_seconds),
         }
+        if source_image_refs:
+            source_image_urls = [
+                self.storage.build_asset_url(source_ref, settings.asset_token_ttl_seconds)
+                for source_ref in source_image_refs
+            ]
+            asset_urls["source_image_url"] = source_image_urls[0]
+            asset_urls["source_image_urls"] = source_image_urls
+        if source_video_ref:
+            asset_urls["source_video_url"] = self.storage.build_asset_url(
+                source_video_ref, settings.asset_token_ttl_seconds
+            )
         if job.driving_audio_path:
             asset_urls["driving_audio_url"] = self.storage.build_asset_url(
                 job.driving_audio_path, settings.asset_token_ttl_seconds
@@ -307,6 +347,34 @@ class JobService:
         if not job.output_path:
             return None
         return self.storage.build_output_url(job.id, job.output_path, settings.output_url_ttl_seconds)
+
+    @staticmethod
+    def _build_source_manifest(
+        primary_image_ref: str | None,
+        source_image_refs: list[str],
+        source_video_ref: str | None,
+    ) -> str:
+        payload = {
+            "version": 1,
+            "primary_image_ref": primary_image_ref,
+            "source_image_refs": source_image_refs,
+            "source_video_ref": source_video_ref,
+        }
+        return json.dumps(payload, separators=(",", ":"))
+
+    @staticmethod
+    def _parse_source_manifest(raw: str) -> tuple[list[str], str | None]:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                refs = parsed.get("source_image_refs")
+                source_image_refs = [str(item) for item in refs] if isinstance(refs, list) else []
+                source_video_ref = parsed.get("source_video_ref")
+                return source_image_refs, str(source_video_ref) if source_video_ref else None
+        except json.JSONDecodeError:
+            pass
+        # Backward compatibility for pre-manifest rows.
+        return ([raw] if raw else []), None
 
     @staticmethod
     def _sha256_bytes(content: bytes) -> str:

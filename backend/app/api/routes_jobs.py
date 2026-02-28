@@ -20,12 +20,25 @@ async def create_job(
     enable_4k: bool = Form(False),
     aspect_ratio: AspectRatio = Form(AspectRatio.portrait),
     reference_video: UploadFile = File(...),
-    source_image: UploadFile = File(...),
+    source_image: UploadFile | None = File(None),  # legacy single-source field
+    source_images: list[UploadFile] | None = File(None),
+    source_video: UploadFile | None = File(None),
     driving_audio: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ) -> JobCreateResponse:
     reference_video_bytes = await reference_video.read()
-    source_image_bytes = await source_image.read()
+    source_uploads: list[UploadFile] = []
+    if source_image is not None:
+        source_uploads.append(source_image)
+    if source_images:
+        source_uploads.extend(source_images)
+    source_image_payloads: list[tuple[str, bytes]] = []
+    for idx, upload in enumerate(source_uploads):
+        content = await upload.read()
+        if not content:
+            continue
+        source_image_payloads.append((upload.filename or f"source_{idx:03d}.jpg", content))
+    source_video_bytes = await source_video.read() if source_video else None
     driving_audio_bytes = await driving_audio.read() if driving_audio else None
 
     try:
@@ -37,8 +50,9 @@ async def create_job(
             aspect_ratio=aspect_ratio,
             reference_video_name=reference_video.filename or "reference.mp4",
             reference_video_bytes=reference_video_bytes,
-            source_image_name=source_image.filename or "source.jpg",
-            source_image_bytes=source_image_bytes,
+            source_images=source_image_payloads,
+            source_video_name=source_video.filename if source_video else None,
+            source_video_bytes=source_video_bytes,
             driving_audio_name=driving_audio.filename if driving_audio else None,
             driving_audio_bytes=driving_audio_bytes,
         )

@@ -181,7 +181,7 @@ def _restore_audio_from_driving_if_missing(driving_audio: Path, output_video: Pa
 
 
 def run_video_swap(
-    source_image: Path,
+    source_images: List[Path],
     target_video: Path,
     output_video: Path,
     quality: str,
@@ -194,6 +194,8 @@ def run_video_swap(
     facefusion_entry = facefusion_root / "facefusion.py"
     if not facefusion_entry.exists():
         raise PipelineError("facefusion entrypoint not found in worker image")
+    if not source_images:
+        raise PipelineError("at least one source image is required for video_swap")
 
     quality_key = (quality or "balanced").strip().lower()
     is_max_quality = quality_key == "max"
@@ -260,7 +262,7 @@ def run_video_swap(
         "--processors",
         "face_swapper",
         "-s",
-        str(source_image),
+        *[str(path) for path in source_images],
         "-t",
         str(target_video),
         "--face-detector-model",
