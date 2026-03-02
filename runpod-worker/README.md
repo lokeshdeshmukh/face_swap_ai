@@ -63,7 +63,9 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - `Dockerfile.generation` installs the official MimicMotion repo under `/opt/mimicmotion`
   - the worker exposes `/usr/local/bin/mimicmotion` as a wrapper binary
   - first request downloads MimicMotion weights into `/runpod-volume/truefaceswap-cache/mimicmotion/checkpoints` when a Runpod volume is attached
+  - first request also downloads the gated Stability base model into `/runpod-volume/truefaceswap-cache/mimicmotion/base_model`
   - if no volume is attached, weights fall back to `/opt/mimicmotion/models/checkpoints`
+  - set `HF_TOKEN` on the Runpod endpoint and make sure the token has accepted access to `stabilityai/stable-video-diffusion-img2vid-xt-1-1`
   - this image sets `REQUIRE_FULL_BODY_REENACTMENT_BACKEND=true` by default
 - Default model:
   - `GENERATION_MODEL_ID=THUDM/CogVideoX-5b-I2V`
@@ -97,6 +99,7 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - `MIMICMOTION_CKPT_NAME`
   - `MIMICMOTION_WEIGHTS_DIR`
   - `MIMICMOTION_BASE_MODEL`
+  - `HF_TOKEN` (or `HUGGINGFACE_HUB_TOKEN`) for gated model downloads
   - `MIMICMOTION_SAMPLE_STRIDE`
   - `MIMICMOTION_NUM_INFERENCE_STEPS`
   - `MIMICMOTION_GUIDANCE_SCALE`

@@ -9,7 +9,8 @@ import tempfile
 import time
 from pathlib import Path
 
-from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download, snapshot_download
+from huggingface_hub.errors import GatedRepoError, HfHubHTTPError, RepositoryNotFoundError
 
 
 def _parse_args() -> argparse.Namespace:
@@ -37,6 +38,54 @@ def _run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = N
     return result.stdout
 
 
+def _hf_token() -> str | None:
+    for name in ("HF_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    return None
+
+
+def _download_file(repo_id: str, filename: str, cache_dir: Path) -> Path:
+    token = _hf_token()
+    try:
+        return Path(
+            hf_hub_download(
+                repo_id=repo_id,
+                filename=filename,
+                cache_dir=str(cache_dir),
+                token=token,
+            )
+        )
+    except GatedRepoError as exc:
+        raise SystemExit(
+            f"gated Hugging Face repo access required for {repo_id}. "
+            "Set HF_TOKEN (or HUGGINGFACE_HUB_TOKEN) on the Runpod endpoint and make sure that token has accepted access to the model."
+        ) from exc
+    except (RepositoryNotFoundError, HfHubHTTPError) as exc:
+        raise SystemExit(f"failed to download {filename} from {repo_id}: {exc}") from exc
+
+
+def _download_snapshot(repo_id: str, local_dir: Path, cache_dir: Path) -> Path:
+    token = _hf_token()
+    try:
+        snapshot_download(
+            repo_id=repo_id,
+            local_dir=str(local_dir),
+            local_dir_use_symlinks=False,
+            cache_dir=str(cache_dir),
+            token=token,
+        )
+    except GatedRepoError as exc:
+        raise SystemExit(
+            f"gated Hugging Face repo access required for {repo_id}. "
+            "Set HF_TOKEN (or HUGGINGFACE_HUB_TOKEN) on the Runpod endpoint and make sure that token has accepted access to the model."
+        ) from exc
+    except (RepositoryNotFoundError, HfHubHTTPError) as exc:
+        raise SystemExit(f"failed to download snapshot from {repo_id}: {exc}") from exc
+    return local_dir
+
+
 def _weights_root() -> Path:
     explicit = os.getenv("MIMICMOTION_WEIGHTS_DIR", "").strip()
     if explicit:
@@ -54,41 +103,39 @@ def _ensure_repo_path(repo_dir: Path, relative_path: str) -> Path:
     return candidate
 
 
-def _ensure_weights(repo_dir: Path, venv_bin_dir: Path) -> Path:
+def _ensure_weights(repo_dir: Path, venv_bin_dir: Path) -> tuple[Path, Path]:
     weights_root = _weights_root()
     checkpoints_dir = weights_root / "checkpoints"
     dwpose_dir = weights_root / "DWPose"
+    base_model_dir = weights_root / "base_model"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
     dwpose_dir.mkdir(parents=True, exist_ok=True)
+    base_model_dir.mkdir(parents=True, exist_ok=True)
 
     ckpt_name = os.getenv("MIMICMOTION_CKPT_NAME", "MimicMotion_1-1.pth").strip() or "MimicMotion_1-1.pth"
     checkpoint_path = checkpoints_dir / ckpt_name
+    base_model_repo = (
+        os.getenv("MIMICMOTION_BASE_MODEL", "stabilityai/stable-video-diffusion-img2vid-xt-1-1").strip()
+        or "stabilityai/stable-video-diffusion-img2vid-xt-1-1"
+    )
     dwpose_repo = os.getenv("MIMICMOTION_DWPOSE_HF_REPO", "yzd-v/DWPose").strip() or "yzd-v/DWPose"
     dwpose_files = [
         ("yolox_l.onnx", dwpose_dir / "yolox_l.onnx"),
         ("dw-ll_ucoco_384.onnx", dwpose_dir / "dw-ll_ucoco_384.onnx"),
     ]
+    cache_dir = weights_root / "hf_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
     if not checkpoint_path.exists():
         hf_repo = os.getenv("MIMICMOTION_HF_REPO", "Tencent/MimicMotion").strip() or "Tencent/MimicMotion"
-        cache_dir = weights_root / "hf_cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        downloaded_path = hf_hub_download(
-            repo_id=hf_repo,
-            filename=ckpt_name,
-            cache_dir=str(cache_dir),
-        )
+        downloaded_path = _download_file(hf_repo, ckpt_name, cache_dir)
         shutil.copyfile(downloaded_path, checkpoint_path)
     for filename, target_path in dwpose_files:
         if target_path.exists():
             continue
-        cache_dir = weights_root / "hf_cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        downloaded_path = hf_hub_download(
-            repo_id=dwpose_repo,
-            filename=filename,
-            cache_dir=str(cache_dir),
-        )
+        downloaded_path = _download_file(dwpose_repo, filename, cache_dir)
         shutil.copyfile(downloaded_path, target_path)
+    if not (base_model_dir / "unet" / "config.json").exists():
+        _download_snapshot(base_model_repo, base_model_dir, cache_dir)
 
     models_dir = repo_dir / "models"
     if weights_root != models_dir:
@@ -98,7 +145,7 @@ def _ensure_weights(repo_dir: Path, venv_bin_dir: Path) -> Path:
             else:
                 shutil.rmtree(models_dir)
         models_dir.symlink_to(weights_root, target_is_directory=True)
-    return checkpoint_path
+    return checkpoint_path, base_model_dir
 
 
 def _ffprobe_frame_count(video_path: Path) -> int:
@@ -146,12 +193,12 @@ def _build_config_text(
     source_image: Path,
     driving_video: Path,
     checkpoint_path: Path,
+    base_model_path: Path,
     frame_count: int,
     fps: int,
     resolution: int,
     seed: int,
 ) -> str:
-    base_model = os.getenv("MIMICMOTION_BASE_MODEL", "stabilityai/stable-video-diffusion-img2vid-xt-1-1").strip()
     sample_stride = int(os.getenv("MIMICMOTION_SAMPLE_STRIDE", "2"))
     overlap = int(os.getenv("MIMICMOTION_FRAMES_OVERLAP", "6"))
     steps = int(os.getenv("MIMICMOTION_NUM_INFERENCE_STEPS", "25"))
@@ -160,7 +207,7 @@ def _build_config_text(
 
     return "\n".join(
         [
-            f'base_model_path: "{base_model}"',
+            f'base_model_path: "{base_model_path.resolve()}"',
             f'ckpt_path: "{checkpoint_path}"',
             "test_case:",
             f'  - ref_video_path: "{driving_video.resolve()}"',
@@ -206,7 +253,7 @@ def main() -> None:
     if not python_bin.exists():
         raise SystemExit(f"MimicMotion python runtime not found: {python_bin}")
 
-    checkpoint_path = _ensure_weights(repo_dir, venv_bin_dir)
+    checkpoint_path, base_model_path = _ensure_weights(repo_dir, venv_bin_dir)
     requested_frame_count = max(1, args.frame_count)
     probed_frame_count = _ffprobe_frame_count(Path(args.driving_video))
     frame_count = min(requested_frame_count, probed_frame_count) if probed_frame_count else requested_frame_count
@@ -220,6 +267,7 @@ def main() -> None:
                 source_image=Path(args.source_image),
                 driving_video=Path(args.driving_video),
                 checkpoint_path=checkpoint_path,
+                base_model_path=base_model_path,
                 frame_count=frame_count,
                 fps=max(1, args.fps),
                 resolution=resolution,
