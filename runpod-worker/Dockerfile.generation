@@ -47,6 +47,18 @@ RUN set -eux; \
 
 RUN git clone --depth 1 --branch "${MIMICMOTION_REF}" https://github.com/Tencent/MimicMotion.git "${MIMICMOTION_REPO_DIR}"
 
+RUN python3 - <<'PY'
+from pathlib import Path
+
+loader_path = Path("/opt/mimicmotion/mimicmotion/utils/loader.py")
+source = loader_path.read_text(encoding="utf-8")
+old = "with torch.serialization.safe_globals(*allowed_modules):"
+new = "with torch.serialization.safe_globals(list(allowed_modules)):"
+if old not in source:
+    raise SystemExit(f"expected torch safe_globals call not found in {loader_path}")
+loader_path.write_text(source.replace(old, new), encoding="utf-8")
+PY
+
 RUN python3 -m venv --system-site-packages /opt/mimicmotion-venv && \
     "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir --upgrade pip setuptools wheel
 

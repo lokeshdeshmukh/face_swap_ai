@@ -103,6 +103,15 @@ def _ensure_repo_path(repo_dir: Path, relative_path: str) -> Path:
     return candidate
 
 
+def _patch_repo_for_torch(repo_dir: Path) -> None:
+    loader_path = _ensure_repo_path(repo_dir, "mimicmotion/utils/loader.py")
+    source = loader_path.read_text(encoding="utf-8")
+    old = "with torch.serialization.safe_globals(*allowed_modules):"
+    new = "with torch.serialization.safe_globals(list(allowed_modules)):"
+    if old in source:
+        loader_path.write_text(source.replace(old, new), encoding="utf-8")
+
+
 def _ensure_weights(repo_dir: Path, venv_bin_dir: Path) -> tuple[Path, Path]:
     weights_root = _weights_root()
     checkpoints_dir = weights_root / "checkpoints"
@@ -253,6 +262,7 @@ def main() -> None:
     if not python_bin.exists():
         raise SystemExit(f"MimicMotion python runtime not found: {python_bin}")
 
+    _patch_repo_for_torch(repo_dir)
     checkpoint_path, base_model_path = _ensure_weights(repo_dir, venv_bin_dir)
     requested_frame_count = max(1, args.frame_count)
     probed_frame_count = _ffprobe_frame_count(Path(args.driving_video))
