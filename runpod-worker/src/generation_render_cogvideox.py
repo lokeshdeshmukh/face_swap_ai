@@ -72,6 +72,29 @@ def _compose_prompt(base_prompt: str, motion_preset: str | None, style_preset: s
     return ", ".join(part for part in parts if part)
 
 
+def _compose_motion_reference_phrase(profile: dict[str, object] | None) -> str | None:
+    if not profile:
+        return None
+    motion_type = str(profile.get("motion_type") or "").strip()
+    motion_summary = str(profile.get("motion_summary") or "").strip()
+    mapping = {
+        "push_in": "camera movement should follow a gentle push-in from the reference clip",
+        "pull_out": "camera movement should follow a gentle pull-back from the reference clip",
+        "pan_left": "camera movement should follow a leftward pan from the reference clip",
+        "pan_right": "camera movement should follow a rightward pan from the reference clip",
+        "tilt_up": "camera movement should follow an upward tilt from the reference clip",
+        "tilt_down": "camera movement should follow a downward tilt from the reference clip",
+        "handheld": "camera movement should mimic natural handheld motion from the reference clip",
+        "mixed_motion": "camera movement should follow the mixed motion pattern from the reference clip",
+        "locked_portrait": "camera framing should stay mostly locked like the reference clip",
+    }
+    if motion_type in mapping:
+        return mapping[motion_type]
+    if motion_summary:
+        return f"camera movement should follow this reference behavior: {motion_summary}"
+    return None
+
+
 def _target_base_size(aspect_ratio: str) -> tuple[int, int]:
     # CogVideoX I2V is most reliable around 720x480-class resolutions.
     if aspect_ratio == "1:1":
@@ -246,6 +269,9 @@ def main() -> None:
     fps = _env_int("GENERATION_OUTPUT_FPS", 8)
 
     prompt = _compose_prompt(shot_plan.prompt, shot_plan.motion_preset, shot_plan.style_preset)
+    motion_reference_phrase = _compose_motion_reference_phrase(shot_plan.motion_reference_profile)
+    if motion_reference_phrase:
+        prompt = f"{prompt}, {motion_reference_phrase}"
     base_width, base_height = _target_base_size(shot_plan.render_profile.aspect_ratio)
     final_width, final_height = _target_final_size(shot_plan.render_profile.aspect_ratio, shot_plan.render_profile.quality)
 
@@ -308,8 +334,10 @@ def main() -> None:
         warnings.append("Multiple identity images were provided, but only one image was used because GENERATION_MULTI_IMAGE_MODE=primary_only.")
     if identity_pack.identity_video:
         warnings.append("Identity video is not consumed by the first CogVideoX backend yet.")
-    if shot_plan.motion_reference_video:
-        warnings.append("Motion reference video is not consumed by the first CogVideoX backend yet.")
+    if shot_plan.motion_reference_profile:
+        warnings.append("Motion reference video is consumed through derived motion-profile prompting, not direct control-video conditioning.")
+    elif shot_plan.motion_reference_video:
+        warnings.append("Motion reference video was provided but motion analysis did not resolve a usable profile.")
     if shot_plan.negative_prompt:
         warnings.append("Negative prompt is not consumed by the first CogVideoX backend yet.")
 
@@ -329,6 +357,7 @@ def main() -> None:
                     "width": final_width,
                     "height": final_height,
                     **image_prep_metadata,
+                    "motion_profile_used": "yes" if shot_plan.motion_reference_profile else "no",
                 },
                 warnings=warnings,
             ),

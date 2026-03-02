@@ -147,6 +147,7 @@ class ShotPlan:
     duration_seconds: int
     seed: int | None
     motion_reference_video: str | None
+    motion_reference_profile: dict[str, Any] | None
     driving_audio: str | None
     render_profile: RenderProfile
 
@@ -161,6 +162,7 @@ class ShotPlan:
             "duration_seconds": self.duration_seconds,
             "seed": self.seed,
             "motion_reference_video": self.motion_reference_video,
+            "motion_reference_profile": self.motion_reference_profile,
             "driving_audio": self.driving_audio,
             "render_profile": self.render_profile.to_dict(),
         }
@@ -172,6 +174,8 @@ class ShotPlan:
             raise ContractError("shot plan prompt must be non-empty")
         if self.duration_seconds <= 0:
             raise ContractError("duration_seconds must be > 0")
+        if self.motion_reference_profile is not None and not isinstance(self.motion_reference_profile, dict):
+            raise ContractError("motion_reference_profile must be a dict when provided")
         self.render_profile.validate()
 
     @classmethod
@@ -189,6 +193,7 @@ class ShotPlan:
             duration_seconds=_require_int(data, "duration_seconds", minimum=1),
             seed=seed,
             motion_reference_video=_optional_string(data, "motion_reference_video"),
+            motion_reference_profile=data.get("motion_reference_profile"),
             driving_audio=_optional_string(data, "driving_audio"),
             render_profile=RenderProfile.from_dict(data.get("render_profile", {})),
         )

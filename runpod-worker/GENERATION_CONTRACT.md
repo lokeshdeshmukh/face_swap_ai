@@ -78,8 +78,9 @@ The initial self-hosted backend is intentionally narrow:
 - can convert up to 4 identity images into one reference canvas for the model input
 - can be forced back to one image with `GENERATION_MULTI_IMAGE_MODE=primary_only`
 - does not yet do learned multi-image identity fusion
-- does not yet consume identity video
-- does not yet consume motion reference video
+- can sample identity-video frames and add the strongest ones into the identity pack
+- can analyze motion-reference video and convert it into a motion profile that is appended to prompting
+- does not yet do direct control-video conditioning from the motion reference clip
 - refine stage is currently a passthrough copy stage
 
 This is still a real self-hosted generation path, but not the final industry-grade identity stack yet.

@@ -76,7 +76,9 @@ def run_preflight() -> Dict[str, object]:
     worker_pipeline_mode = os.getenv("WORKER_PIPELINE_MODE", "hybrid").strip().lower()
 
     if worker_pipeline_mode == "generation":
-        errors.extend(_check_python_modules(["requests", "runpod", "torch", "diffusers", "transformers", "accelerate", "PIL"]))
+        errors.extend(
+            _check_python_modules(["requests", "runpod", "torch", "diffusers", "transformers", "accelerate", "PIL", "cv2"])
+        )
         errors.extend(_check_binaries(["ffmpeg"]))
         errors.extend(_check_torch_cuda())
     else:
