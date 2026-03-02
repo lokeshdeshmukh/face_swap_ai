@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import tempfile
@@ -105,7 +106,16 @@ def main() -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     render_profile = shot_plan.render_profile
-    resolution = min(render_profile.resolution)
+    # MimicMotion 1.1 is materially less stable when fed UI/render-profile sizes directly.
+    # Keep the runtime inside the model's practical operating range and expose overrides via env.
+    resolution = int(os.getenv("MIMICMOTION_RESOLUTION", "576"))
+    resolution = max(512, min(resolution, 1024))
+    max_frames = int(os.getenv("MIMICMOTION_MAX_FRAMES", "72"))
+    min_frames = int(os.getenv("MIMICMOTION_MIN_FRAMES", "16"))
+    frame_count = min(render_profile.frame_count, max_frames)
+    frame_count = max(frame_count, min_frames)
+    fps = min(render_profile.fps, int(os.getenv("MIMICMOTION_MAX_FPS", "15")))
+    fps = max(fps, 1)
     with tempfile.TemporaryDirectory(prefix="mimicmotion-full-body-") as temp_dir:
         temp_path = Path(temp_dir)
         rendered = temp_path / "rendered.mp4"
@@ -118,9 +128,9 @@ def main() -> None:
             "--output",
             str(rendered),
             "--frame-count",
-            str(render_profile.frame_count),
+            str(frame_count),
             "--fps",
-            str(render_profile.fps),
+            str(fps),
             "--resolution",
             str(resolution),
         ]

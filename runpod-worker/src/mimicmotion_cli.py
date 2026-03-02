@@ -109,7 +109,13 @@ def _patch_repo_for_torch(repo_dir: Path) -> None:
     old = "with torch.serialization.safe_globals(*allowed_modules):"
     new = "with torch.serialization.safe_globals(list(allowed_modules)):"
     if old in source:
-        loader_path.write_text(source.replace(old, new), encoding="utf-8")
+        source = source.replace(old, new)
+        loader_path.write_text(source, encoding="utf-8")
+    if new not in source:
+        raise SystemExit(
+            "failed to patch MimicMotion torch compatibility in mimicmotion/utils/loader.py; "
+            "the worker image is stale or the upstream file changed"
+        )
 
 
 def _ensure_weights(repo_dir: Path, venv_bin_dir: Path) -> tuple[Path, Path]:
