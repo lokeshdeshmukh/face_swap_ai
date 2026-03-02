@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 class JobMode(str, Enum):
     portrait_reenactment = "portrait_reenactment"
+    full_body_reenactment = "full_body_reenactment"
     ai_video_generate = "ai_video_generate"
     photo_to_video = "photo_to_video"
     video_swap = "video_swap"

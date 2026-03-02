@@ -48,6 +48,7 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
 - Default generation backend in this repo:
   - portrait reenactment render: `python3 /worker/src/generation_render_reenactment.py`
   - portrait reenactment pipeline: `python3 /worker/src/portrait_reenactment_liveportrait.py`
+  - full body reenactment render: `python3 /worker/src/generation_render_full_body_reenactment.py`
   - render: `python3 /worker/src/generation_render_cogvideox.py`
   - refine: `python3 /worker/src/generation_refine_basic.py`
 - Portrait reenactment requires a dedicated in-repo model runner:
@@ -57,6 +58,10 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - first request downloads LivePortrait weights into the persistent cache at `/runpod-volume/truefaceswap-cache/liveportrait/pretrained_weights` when a Runpod volume is attached
   - if no volume is attached, weights fall back to `/opt/liveportrait/pretrained_weights`
   - to fail fast at boot, set `REQUIRE_PORTRAIT_REENACTMENT_BACKEND=true`
+- Full Body Reenactment is a separate product path:
+  - default render wrapper: `FULL_BODY_REENACTMENT_RENDER_COMMAND="python3 /worker/src/generation_render_full_body_reenactment.py"`
+  - you must provide a real backend with `FULL_BODY_REENACTMENT_PIPELINE_COMMAND`
+  - there is intentionally no fake fallback to the portrait backend
 - Default model:
   - `GENERATION_MODEL_ID=THUDM/CogVideoX-5b-I2V`
 - Preferred split for staged pipelines:

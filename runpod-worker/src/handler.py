@@ -317,15 +317,15 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
                 extracted = _extract_source_frames(source_video, tmp_path / "source_frames", max_frames=max_frames, fps=fps)
                 source_images.extend(extracted)
 
-            if mode in {"portrait_reenactment", "ai_video_generate", "photo_to_video"}:
+            if mode in {"portrait_reenactment", "full_body_reenactment", "ai_video_generate", "photo_to_video"}:
                 if "driving_audio_url" in assets:
                     _download(str(assets["driving_audio_url"]), driving_audio)
                     driving_audio_path: Path | None = driving_audio
                 else:
                     driving_audio_path = None
 
-                if mode == "portrait_reenactment" and not has_reference_video:
-                    raise ValueError("portrait_reenactment requires a driving video")
+                if mode in {"portrait_reenactment", "full_body_reenactment"} and not has_reference_video:
+                    raise ValueError(f"{mode} requires a driving video")
 
                 def _progress(stage: str, metadata: dict[str, object] | None = None) -> None:
                     _emit_progress(callback_url, callback_secret, job_id, stage, metadata)
@@ -347,7 +347,11 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
                     task_type=(
                         "portrait_reenactment"
                         if mode == "portrait_reenactment"
-                        else "image_to_video_generation"
+                        else (
+                            "full_body_reenactment"
+                            if mode == "full_body_reenactment"
+                            else "image_to_video_generation"
+                        )
                     ),
                     control_bundle_path=control_bundle_path,
                     motion_reference_video=reference_video if has_reference_video else None,

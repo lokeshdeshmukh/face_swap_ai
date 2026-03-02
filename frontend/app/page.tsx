@@ -4,14 +4,21 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { apiBase, type JobStatus } from "../lib/api";
 
-type Mode = "portrait_reenactment" | "ai_video_generate" | "photo_to_video" | "video_swap" | "photo_sing";
+type Mode =
+  | "portrait_reenactment"
+  | "full_body_reenactment"
+  | "ai_video_generate"
+  | "photo_to_video"
+  | "video_swap"
+  | "photo_sing";
 type Quality = "fast" | "balanced" | "max";
 type AspectRatio = "9:16" | "1:1" | "4:5";
 
-const GENERATION_MODES: Mode[] = ["portrait_reenactment", "ai_video_generate", "photo_to_video"];
+const GENERATION_MODES: Mode[] = ["portrait_reenactment", "full_body_reenactment", "ai_video_generate", "photo_to_video"];
+const REENACTMENT_MODES: Mode[] = ["portrait_reenactment", "full_body_reenactment"];
 
 export default function HomePage() {
-  const [mode, setMode] = useState<Mode>("portrait_reenactment");
+  const [mode, setMode] = useState<Mode>("full_body_reenactment");
   const [quality, setQuality] = useState<Quality>("balanced");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   const [enable4k, setEnable4k] = useState(false);
@@ -34,7 +41,9 @@ export default function HomePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isGenerationMode = GENERATION_MODES.includes(mode);
-  const isReenactmentMode = mode === "portrait_reenactment";
+  const isReenactmentMode = REENACTMENT_MODES.includes(mode);
+  const isFullBodyReenactmentMode = mode === "full_body_reenactment";
+  const usesPromptDrivenGeneration = isGenerationMode && !isReenactmentMode;
   const needsReferenceVideo = !isGenerationMode || isReenactmentMode;
 
   const pollEnabled = useMemo(
@@ -88,7 +97,9 @@ export default function HomePage() {
       return;
     }
     if (needsReferenceVideo && !referenceVideo) {
-      setError(isReenactmentMode ? "Driving video is required for portrait reenactment." : "Reference video is required for legacy modes.");
+      setError(
+        isReenactmentMode ? "Driving video is required for reenactment modes." : "Reference video is required for legacy modes."
+      );
       return;
     }
     if (mode === "ai_video_generate" && !prompt.trim()) {
@@ -101,12 +112,14 @@ export default function HomePage() {
     form.append("quality", quality);
     form.append("enable_4k", String(enable4k));
     form.append("aspect_ratio", aspectRatio);
-    form.append("prompt", prompt);
-    form.append("negative_prompt", negativePrompt);
-    form.append("motion_preset", motionPreset);
-    form.append("style_preset", stylePreset);
-    form.append("duration_seconds", durationSeconds);
-    if (seed.trim()) form.append("seed", seed.trim());
+    if (usesPromptDrivenGeneration) {
+      form.append("prompt", prompt);
+      form.append("negative_prompt", negativePrompt);
+      form.append("motion_preset", motionPreset);
+      form.append("style_preset", stylePreset);
+      form.append("duration_seconds", durationSeconds);
+      if (seed.trim()) form.append("seed", seed.trim());
+    }
     if (referenceVideo) form.append("reference_video", referenceVideo);
     sourceImages.forEach((file) => form.append("source_images", file));
     if (sourceVideo) form.append("source_video", sourceVideo);
@@ -140,11 +153,19 @@ export default function HomePage() {
       </p>
 
       <form className="card" onSubmit={onSubmit}>
+        {isFullBodyReenactmentMode ? (
+          <p className="muted" style={{ marginTop: 0 }}>
+            Full Body Reenactment is for driver-video performance transfer. Use identity images with clear face plus
+            upper-body context, and upload the performer clip as the driving video.
+          </p>
+        ) : null}
+
         <div className="grid">
           <div>
             <label htmlFor="mode">Mode</label>
             <select id="mode" value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
               <option value="portrait_reenactment">Portrait Reenactment</option>
+              <option value="full_body_reenactment">Full Body Reenactment</option>
               <option value="ai_video_generate">AI Video Generation (Experimental)</option>
               <option value="photo_to_video">Photo to Video (Experimental)</option>
               <option value="video_swap">Legacy Face Swap</option>
@@ -183,7 +204,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        {isGenerationMode ? (
+        {usesPromptDrivenGeneration ? (
           <div className="grid" style={{ marginTop: 12 }}>
             <div>
               <label htmlFor="prompt">Prompt</label>
@@ -191,11 +212,7 @@ export default function HomePage() {
                 id="prompt"
                 rows={4}
                 value={prompt}
-                placeholder={
-                  isReenactmentMode
-                    ? "Optional look/style notes, e.g. premium studio realism, clean skin texture, natural lighting"
-                    : ""
-                }
+                placeholder=""
                 onChange={(e) => setPrompt(e.target.value)}
               />
             </div>
@@ -211,7 +228,7 @@ export default function HomePage() {
             </div>
 
             <div>
-              <label htmlFor="motionPreset">{isReenactmentMode ? "Motion Bias" : "Motion Preset"}</label>
+              <label htmlFor="motionPreset">Motion Preset</label>
               <input id="motionPreset" value={motionPreset} onChange={(e) => setMotionPreset(e.target.value)} />
             </div>
 
@@ -279,7 +296,9 @@ export default function HomePage() {
                 {referenceVideo
                   ? referenceVideo.name
                   : isReenactmentMode
-                    ? "Upload the performer video whose motion and expressions should drive the identity."
+                    ? isFullBodyReenactmentMode
+                      ? "Upload the performer video whose full-body motion and expressions should drive the identity."
+                      : "Upload the performer video whose motion and expressions should drive the identity."
                     : "No reference video selected"}
               </p>
             </div>

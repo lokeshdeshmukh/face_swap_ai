@@ -5,6 +5,7 @@ The generation worker uses two JSON contracts and two optional adapter commands.
 Current first real backend in this repo:
 
 - portrait reenactment wrapper: `/worker/src/generation_render_reenactment.py`
+- full body reenactment wrapper: `/worker/src/generation_render_full_body_reenactment.py`
 - portrait reenactment backend: `/worker/src/portrait_reenactment_liveportrait.py`
 - render: `/worker/src/generation_render_cogvideox.py`
 - refine: `/worker/src/generation_refine_basic.py`
@@ -86,7 +87,9 @@ They are placeholders for local verification only.
 The initial self-hosted backend is intentionally narrow:
 
 - supports `portrait_reenactment` as a first-class worker task
+- supports `full_body_reenactment` as a separate first-class worker task with its own render wrapper
 - routes `portrait_reenactment` through a dedicated wrapper backend instead of the generic CogVideoX adapter
+- routes `full_body_reenactment` through its own wrapper and requires a dedicated body-motion backend command
 - includes a concrete LivePortrait-based reenactment backend entrypoint in-repo
 - `Dockerfile.generation` installs the official LivePortrait runtime into `/opt/liveportrait` and exposes `/usr/local/bin/liveportrait`
 - LivePortrait weights are downloaded lazily on first use and should be cached on the mounted Runpod volume when available

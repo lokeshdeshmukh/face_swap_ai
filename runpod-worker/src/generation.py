@@ -562,6 +562,10 @@ def render_generation(
         render_command = os.getenv("PORTRAIT_REENACTMENT_RENDER_COMMAND", "").strip() or (
             "python3 /worker/src/generation_render_reenactment.py"
         )
+    elif shot_plan.task_type == "full_body_reenactment":
+        render_command = os.getenv("FULL_BODY_REENACTMENT_RENDER_COMMAND", "").strip() or (
+            "python3 /worker/src/generation_render_full_body_reenactment.py"
+        )
     else:
         render_command = os.getenv("GENERATION_RENDER_COMMAND", "").strip() or os.getenv(
             "GENERATION_PIPELINE_COMMAND", ""

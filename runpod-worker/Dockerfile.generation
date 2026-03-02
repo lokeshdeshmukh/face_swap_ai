@@ -9,6 +9,8 @@ ENV PYTHONPATH=/worker/src
 ENV PORTRAIT_REENACTMENT_RENDER_COMMAND="python3 /worker/src/generation_render_reenactment.py"
 ENV PORTRAIT_REENACTMENT_PIPELINE_COMMAND="python3 /worker/src/portrait_reenactment_liveportrait.py"
 ENV PORTRAIT_REENACTMENT_BACKEND="liveportrait_cli"
+ENV FULL_BODY_REENACTMENT_RENDER_COMMAND="python3 /worker/src/generation_render_full_body_reenactment.py"
+ENV FULL_BODY_REENACTMENT_BACKEND="unconfigured"
 ENV LIVEPORTRAIT_REPO_DIR=/opt/liveportrait
 ENV LIVEPORTRAIT_VENV_BIN=/opt/liveportrait-venv/bin
 ENV LIVEPORTRAIT_HF_REPO=KlingTeam/LivePortrait
@@ -52,7 +54,7 @@ RUN set -eux; \
     printf '#!/usr/bin/env bash\nexec python3 /worker/src/liveportrait_cli.py "$@"\n' > /usr/local/bin/liveportrait; \
     chmod +x /usr/local/bin/liveportrait; \
     chmod +x /worker/scripts/example_generation_render.py /worker/scripts/example_generation_refine.py; \
-    chmod +x /worker/src/generation_render_cogvideox.py /worker/src/generation_render_reenactment.py /worker/src/portrait_reenactment_liveportrait.py /worker/src/generation_refine_basic.py /worker/src/liveportrait_cli.py; \
+    chmod +x /worker/src/generation_render_cogvideox.py /worker/src/generation_render_reenactment.py /worker/src/generation_render_full_body_reenactment.py /worker/src/portrait_reenactment_liveportrait.py /worker/src/generation_refine_basic.py /worker/src/liveportrait_cli.py; \
     liveportrait --help >/dev/null
 WORKDIR /worker/src
 

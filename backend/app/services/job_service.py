@@ -44,11 +44,16 @@ class JobService:
 
     @staticmethod
     def _is_generation_mode(mode: JobMode) -> bool:
-        return mode in {JobMode.portrait_reenactment, JobMode.ai_video_generate, JobMode.photo_to_video}
+        return mode in {
+            JobMode.portrait_reenactment,
+            JobMode.full_body_reenactment,
+            JobMode.ai_video_generate,
+            JobMode.photo_to_video,
+        }
 
     @staticmethod
     def _is_reenactment_mode(mode: JobMode) -> bool:
-        return mode == JobMode.portrait_reenactment
+        return mode in {JobMode.portrait_reenactment, JobMode.full_body_reenactment}
 
     def create_job(
         self,
@@ -87,7 +92,7 @@ class JobService:
             validate_extension(driving_audio_name, "audio")
 
         if is_reenactment_mode and not reference_video_bytes:
-            raise ValueError("driving video is required for portrait reenactment")
+            raise ValueError("driving video is required for reenactment modes")
         if not is_generation_mode and not reference_video_bytes:
             raise ValueError("reference video is required for legacy modes")
         if mode == JobMode.ai_video_generate and not (prompt or "").strip():
@@ -422,7 +427,11 @@ class JobService:
                     "task_type": (
                         "portrait_reenactment"
                         if mode == JobMode.portrait_reenactment
-                        else "image_to_video_generation"
+                        else (
+                            "full_body_reenactment"
+                            if mode == JobMode.full_body_reenactment
+                            else "image_to_video_generation"
+                        )
                     ),
                 }
             )

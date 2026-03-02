@@ -224,10 +224,10 @@ class ShotPlan:
     def validate(self) -> None:
         if self.version != CONTRACT_VERSION:
             raise ContractError(f"unsupported shot plan version: {self.version}")
-        if self.task_type not in {"portrait_reenactment", "image_to_video_generation"}:
+        if self.task_type not in {"portrait_reenactment", "full_body_reenactment", "image_to_video_generation"}:
             raise ContractError(f"unsupported task_type: {self.task_type}")
         if not self.prompt.strip():
-            if self.task_type != "portrait_reenactment":
+            if self.task_type not in {"portrait_reenactment", "full_body_reenactment"}:
                 raise ContractError("shot plan prompt must be non-empty")
         if self.duration_seconds <= 0:
             raise ContractError("duration_seconds must be > 0")
