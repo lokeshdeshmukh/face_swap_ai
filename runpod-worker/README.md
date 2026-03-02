@@ -52,7 +52,10 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - refine: `python3 /worker/src/generation_refine_basic.py`
 - Portrait reenactment requires a dedicated in-repo model runner:
   - default: `PORTRAIT_REENACTMENT_PIPELINE_COMMAND="python3 /worker/src/portrait_reenactment_liveportrait.py"`
-  - requires `liveportrait` executable in the worker image
+  - `Dockerfile.generation` installs the official LivePortrait repo under `/opt/liveportrait`
+  - the worker exposes `/usr/local/bin/liveportrait` as a wrapper binary
+  - first request downloads LivePortrait weights into the persistent cache at `/runpod-volume/truefaceswap-cache/liveportrait/pretrained_weights` when a Runpod volume is attached
+  - if no volume is attached, weights fall back to `/opt/liveportrait/pretrained_weights`
   - to fail fast at boot, set `REQUIRE_PORTRAIT_REENACTMENT_BACKEND=true`
 - Default model:
   - `GENERATION_MODEL_ID=THUDM/CogVideoX-5b-I2V`
@@ -74,6 +77,13 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - `GENERATION_RENDER_COMMAND="python3 /worker/scripts/example_generation_render.py"`
   - `GENERATION_REFINE_COMMAND="python3 /worker/scripts/example_generation_refine.py"`
 - Useful generation env overrides:
+  - `LIVEPORTRAIT_REF` (Docker build arg, default `main`)
+  - `LIVEPORTRAIT_HF_REPO`
+  - `LIVEPORTRAIT_WEIGHTS_DIR`
+  - `LIVEPORTRAIT_AUTO_CROP`
+  - `LIVEPORTRAIT_AUDIO_PRIORITY`
+  - `LIVEPORTRAIT_DRIVING_OPTION`
+  - `LIVEPORTRAIT_ANIMATION_REGION`
   - `GENERATION_MODEL_ID`
   - `GENERATION_MODEL_DTYPE=auto|bf16|fp16`
   - `GENERATION_OFFLOAD_MODE=model|sequential|none`

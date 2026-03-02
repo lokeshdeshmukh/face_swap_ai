@@ -88,6 +88,8 @@ The initial self-hosted backend is intentionally narrow:
 - supports `portrait_reenactment` as a first-class worker task
 - routes `portrait_reenactment` through a dedicated wrapper backend instead of the generic CogVideoX adapter
 - includes a concrete LivePortrait-based reenactment backend entrypoint in-repo
+- `Dockerfile.generation` installs the official LivePortrait runtime into `/opt/liveportrait` and exposes `/usr/local/bin/liveportrait`
+- LivePortrait weights are downloaded lazily on first use and should be cached on the mounted Runpod volume when available
 - uses CogVideoX image-to-video on Runpod GPU
 - can convert up to 4 identity images into one reference canvas for the model input
 - can be forced back to one image with `GENERATION_MULTI_IMAGE_MODE=primary_only`

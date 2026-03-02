@@ -4,6 +4,7 @@ import importlib
 import os
 import shutil
 import sys
+from pathlib import Path
 from typing import Dict, List
 
 
@@ -70,6 +71,20 @@ def _check_torch_cuda() -> List[str]:
     return []
 
 
+def _check_liveportrait_runtime() -> List[str]:
+    repo_dir = Path(os.getenv("LIVEPORTRAIT_REPO_DIR", "/opt/liveportrait"))
+    venv_bin_dir = Path(os.getenv("LIVEPORTRAIT_VENV_BIN", "/opt/liveportrait-venv/bin"))
+
+    errors: List[str] = []
+    if not (repo_dir / "inference.py").exists():
+        errors.append(f"liveportrait inference script not found at {repo_dir / 'inference.py'}")
+    if not (venv_bin_dir / "python").exists():
+        errors.append(f"liveportrait python runtime not found at {venv_bin_dir / 'python'}")
+    if not (venv_bin_dir / "huggingface-cli").exists():
+        errors.append(f"liveportrait huggingface-cli not found at {venv_bin_dir / 'huggingface-cli'}")
+    return errors
+
+
 def run_preflight() -> Dict[str, object]:
     errors: List[str] = []
     warnings: List[str] = []
@@ -83,11 +98,17 @@ def run_preflight() -> Dict[str, object]:
         errors.extend(_check_torch_cuda())
         require_portrait_reenactment = _env_bool("REQUIRE_PORTRAIT_REENACTMENT_BACKEND", False)
         portrait_reenactment_missing = _check_binaries(["liveportrait"])
+        portrait_reenactment_runtime = _check_liveportrait_runtime()
         if portrait_reenactment_missing:
             if require_portrait_reenactment:
                 errors.extend(portrait_reenactment_missing)
             else:
                 warnings.extend(portrait_reenactment_missing)
+        if portrait_reenactment_runtime:
+            if require_portrait_reenactment:
+                errors.extend(portrait_reenactment_runtime)
+            else:
+                warnings.extend(portrait_reenactment_runtime)
     else:
         errors.extend(_check_python_modules(["requests", "runpod", "cv2", "onnxruntime", "scipy", "onnx"]))
         errors.extend(_check_binaries(["ffmpeg", "facefusion"]))
