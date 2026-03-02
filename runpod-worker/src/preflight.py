@@ -81,6 +81,13 @@ def run_preflight() -> Dict[str, object]:
         )
         errors.extend(_check_binaries(["ffmpeg"]))
         errors.extend(_check_torch_cuda())
+        require_portrait_reenactment = _env_bool("REQUIRE_PORTRAIT_REENACTMENT_BACKEND", False)
+        portrait_reenactment_missing = _check_binaries(["liveportrait"])
+        if portrait_reenactment_missing:
+            if require_portrait_reenactment:
+                errors.extend(portrait_reenactment_missing)
+            else:
+                warnings.extend(portrait_reenactment_missing)
     else:
         errors.extend(_check_python_modules(["requests", "runpod", "cv2", "onnxruntime", "scipy", "onnx"]))
         errors.extend(_check_binaries(["ffmpeg", "facefusion"]))

@@ -54,7 +54,7 @@ def main() -> None:
         raise SystemExit("portrait reenactment requires at least one identity image")
 
     backend_command = os.getenv("PORTRAIT_REENACTMENT_PIPELINE_COMMAND", "").strip()
-    backend_name = os.getenv("PORTRAIT_REENACTMENT_BACKEND", "").strip() or "unconfigured"
+    backend_name = os.getenv("PORTRAIT_REENACTMENT_BACKEND", "").strip() or "liveportrait_cli"
     if not backend_command:
         raise SystemExit(
             "portrait reenactment backend is not configured; set PORTRAIT_REENACTMENT_PIPELINE_COMMAND to an in-repo model runner"

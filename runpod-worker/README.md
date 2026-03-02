@@ -47,10 +47,13 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
 - To plug in a real in-house generation stack, implement the adapter CLI in `GENERATION_CONTRACT.md`.
 - Default generation backend in this repo:
   - portrait reenactment render: `python3 /worker/src/generation_render_reenactment.py`
+  - portrait reenactment pipeline: `python3 /worker/src/portrait_reenactment_liveportrait.py`
   - render: `python3 /worker/src/generation_render_cogvideox.py`
   - refine: `python3 /worker/src/generation_refine_basic.py`
 - Portrait reenactment requires a dedicated in-repo model runner:
-  - set `PORTRAIT_REENACTMENT_PIPELINE_COMMAND` to your actual reenactment backend entrypoint
+  - default: `PORTRAIT_REENACTMENT_PIPELINE_COMMAND="python3 /worker/src/portrait_reenactment_liveportrait.py"`
+  - requires `liveportrait` executable in the worker image
+  - to fail fast at boot, set `REQUIRE_PORTRAIT_REENACTMENT_BACKEND=true`
 - Default model:
   - `GENERATION_MODEL_ID=THUDM/CogVideoX-5b-I2V`
 - Preferred split for staged pipelines:

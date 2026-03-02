@@ -5,6 +5,7 @@ The generation worker uses two JSON contracts and two optional adapter commands.
 Current first real backend in this repo:
 
 - portrait reenactment wrapper: `/worker/src/generation_render_reenactment.py`
+- portrait reenactment backend: `/worker/src/portrait_reenactment_liveportrait.py`
 - render: `/worker/src/generation_render_cogvideox.py`
 - refine: `/worker/src/generation_refine_basic.py`
 
@@ -86,6 +87,7 @@ The initial self-hosted backend is intentionally narrow:
 
 - supports `portrait_reenactment` as a first-class worker task
 - routes `portrait_reenactment` through a dedicated wrapper backend instead of the generic CogVideoX adapter
+- includes a concrete LivePortrait-based reenactment backend entrypoint in-repo
 - uses CogVideoX image-to-video on Runpod GPU
 - can convert up to 4 identity images into one reference canvas for the model input
 - can be forced back to one image with `GENERATION_MULTI_IMAGE_MODE=primary_only`

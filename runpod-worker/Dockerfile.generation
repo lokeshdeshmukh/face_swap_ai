@@ -5,6 +5,8 @@ WORKDIR /worker
 ENV WORKER_PIPELINE_MODE=generation
 ENV PYTHONPATH=/worker/src
 ENV PORTRAIT_REENACTMENT_RENDER_COMMAND="python3 /worker/src/generation_render_reenactment.py"
+ENV PORTRAIT_REENACTMENT_PIPELINE_COMMAND="python3 /worker/src/portrait_reenactment_liveportrait.py"
+ENV PORTRAIT_REENACTMENT_BACKEND="liveportrait_cli"
 ENV GENERATION_RENDER_COMMAND="python3 /worker/src/generation_render_cogvideox.py"
 ENV GENERATION_REFINE_COMMAND="python3 /worker/src/generation_refine_basic.py"
 ENV GENERATION_MODEL_ID="THUDM/CogVideoX-5b-I2V"
@@ -29,7 +31,7 @@ RUN set -eux; \
 COPY src /worker/src
 COPY scripts /worker/scripts
 RUN chmod +x /worker/scripts/example_generation_render.py /worker/scripts/example_generation_refine.py && \
-    chmod +x /worker/src/generation_render_cogvideox.py /worker/src/generation_render_reenactment.py /worker/src/generation_refine_basic.py
+    chmod +x /worker/src/generation_render_cogvideox.py /worker/src/generation_render_reenactment.py /worker/src/portrait_reenactment_liveportrait.py /worker/src/generation_refine_basic.py
 WORKDIR /worker/src
 
 # Default generation backend is self-hosted CogVideoX image-to-video.
