@@ -9,6 +9,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from huggingface_hub import hf_hub_download
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Worker wrapper for official MimicMotion inference")
@@ -33,16 +35,6 @@ def _run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = N
     if result.returncode != 0:
         raise SystemExit(f"command failed: {' '.join(cmd)}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
     return result.stdout
-
-
-def _huggingface_cli(venv_bin_dir: Path) -> Path:
-    for name in ("huggingface-cli", "hf"):
-        candidate = venv_bin_dir / name
-        if candidate.exists():
-            return candidate
-    raise SystemExit(
-        f"Hugging Face CLI not found in {venv_bin_dir}; expected 'huggingface-cli' or 'hf'"
-    )
 
 
 def _weights_root() -> Path:
@@ -70,18 +62,15 @@ def _ensure_weights(repo_dir: Path, venv_bin_dir: Path) -> Path:
     ckpt_name = os.getenv("MIMICMOTION_CKPT_NAME", "MimicMotion_1-1.pth").strip() or "MimicMotion_1-1.pth"
     checkpoint_path = checkpoints_dir / ckpt_name
     if not checkpoint_path.exists():
-        huggingface_cli = _huggingface_cli(venv_bin_dir)
         hf_repo = os.getenv("MIMICMOTION_HF_REPO", "Tencent/MimicMotion").strip() or "Tencent/MimicMotion"
-        _run(
-            [
-                str(huggingface_cli),
-                "download",
-                hf_repo,
-                ckpt_name,
-                "--local-dir",
-                str(checkpoints_dir),
-            ]
+        cache_dir = weights_root / "hf_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        downloaded_path = hf_hub_download(
+            repo_id=hf_repo,
+            filename=ckpt_name,
+            cache_dir=str(cache_dir),
         )
+        shutil.copyfile(downloaded_path, checkpoint_path)
 
     models_dir = repo_dir / "models"
     if weights_root != models_dir:
