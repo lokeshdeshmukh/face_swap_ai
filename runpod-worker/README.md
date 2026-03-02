@@ -70,6 +70,8 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - `GENERATION_MODEL_ID`
   - `GENERATION_MODEL_DTYPE=auto|bf16|fp16`
   - `GENERATION_OFFLOAD_MODE=model|sequential|none`
+  - `GENERATION_MULTI_IMAGE_MODE=hero_grid|primary_only`
+  - `GENERATION_HERO_IMAGE_INDEX`
   - `GENERATION_NUM_INFERENCE_STEPS`
   - `GENERATION_NUM_FRAMES`
   - `GENERATION_OUTPUT_FPS`

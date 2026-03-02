@@ -75,8 +75,9 @@ They are placeholders for local verification only.
 The initial self-hosted backend is intentionally narrow:
 
 - uses CogVideoX image-to-video on Runpod GPU
-- uses the primary identity image only
-- does not yet fuse multiple identity images
+- can convert up to 4 identity images into one reference canvas for the model input
+- can be forced back to one image with `GENERATION_MULTI_IMAGE_MODE=primary_only`
+- does not yet do learned multi-image identity fusion
 - does not yet consume identity video
 - does not yet consume motion reference video
 - refine stage is currently a passthrough copy stage
