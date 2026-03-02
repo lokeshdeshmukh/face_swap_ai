@@ -57,10 +57,17 @@ def _ensure_repo_path(repo_dir: Path, relative_path: str) -> Path:
 def _ensure_weights(repo_dir: Path, venv_bin_dir: Path) -> Path:
     weights_root = _weights_root()
     checkpoints_dir = weights_root / "checkpoints"
+    dwpose_dir = weights_root / "DWPose"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    dwpose_dir.mkdir(parents=True, exist_ok=True)
 
     ckpt_name = os.getenv("MIMICMOTION_CKPT_NAME", "MimicMotion_1-1.pth").strip() or "MimicMotion_1-1.pth"
     checkpoint_path = checkpoints_dir / ckpt_name
+    dwpose_repo = os.getenv("MIMICMOTION_DWPOSE_HF_REPO", "yzd-v/DWPose").strip() or "yzd-v/DWPose"
+    dwpose_files = [
+        ("yolox_l.onnx", dwpose_dir / "yolox_l.onnx"),
+        ("dw-ll_ucoco_384.onnx", dwpose_dir / "dw-ll_ucoco_384.onnx"),
+    ]
     if not checkpoint_path.exists():
         hf_repo = os.getenv("MIMICMOTION_HF_REPO", "Tencent/MimicMotion").strip() or "Tencent/MimicMotion"
         cache_dir = weights_root / "hf_cache"
@@ -71,6 +78,17 @@ def _ensure_weights(repo_dir: Path, venv_bin_dir: Path) -> Path:
             cache_dir=str(cache_dir),
         )
         shutil.copyfile(downloaded_path, checkpoint_path)
+    for filename, target_path in dwpose_files:
+        if target_path.exists():
+            continue
+        cache_dir = weights_root / "hf_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        downloaded_path = hf_hub_download(
+            repo_id=dwpose_repo,
+            filename=filename,
+            cache_dir=str(cache_dir),
+        )
+        shutil.copyfile(downloaded_path, target_path)
 
     models_dir = repo_dir / "models"
     if weights_root != models_dir:
