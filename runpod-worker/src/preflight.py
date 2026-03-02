@@ -80,8 +80,8 @@ def _check_liveportrait_runtime() -> List[str]:
         errors.append(f"liveportrait inference script not found at {repo_dir / 'inference.py'}")
     if not (venv_bin_dir / "python").exists():
         errors.append(f"liveportrait python runtime not found at {venv_bin_dir / 'python'}")
-    if not (venv_bin_dir / "huggingface-cli").exists():
-        errors.append(f"liveportrait huggingface-cli not found at {venv_bin_dir / 'huggingface-cli'}")
+    if not any((venv_bin_dir / name).exists() for name in ("huggingface-cli", "hf")):
+        errors.append(f"liveportrait Hugging Face CLI not found at {venv_bin_dir} (expected 'huggingface-cli' or 'hf')")
     return errors
 
 
@@ -94,8 +94,8 @@ def _check_mimicmotion_runtime() -> List[str]:
         errors.append(f"mimicmotion inference script not found at {repo_dir / 'inference.py'}")
     if not (venv_bin_dir / "python").exists():
         errors.append(f"mimicmotion python runtime not found at {venv_bin_dir / 'python'}")
-    if not (venv_bin_dir / "huggingface-cli").exists():
-        errors.append(f"mimicmotion huggingface-cli not found at {venv_bin_dir / 'huggingface-cli'}")
+    if not any((venv_bin_dir / name).exists() for name in ("huggingface-cli", "hf")):
+        errors.append(f"mimicmotion Hugging Face CLI not found at {venv_bin_dir} (expected 'huggingface-cli' or 'hf')")
     return errors
 
 

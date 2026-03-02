@@ -35,6 +35,16 @@ def _run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = N
     return result.stdout
 
 
+def _huggingface_cli(venv_bin_dir: Path) -> Path:
+    for name in ("huggingface-cli", "hf"):
+        candidate = venv_bin_dir / name
+        if candidate.exists():
+            return candidate
+    raise SystemExit(
+        f"Hugging Face CLI not found in {venv_bin_dir}; expected 'huggingface-cli' or 'hf'"
+    )
+
+
 def _weights_root() -> Path:
     explicit = os.getenv("MIMICMOTION_WEIGHTS_DIR", "").strip()
     if explicit:
@@ -60,7 +70,7 @@ def _ensure_weights(repo_dir: Path, venv_bin_dir: Path) -> Path:
     ckpt_name = os.getenv("MIMICMOTION_CKPT_NAME", "MimicMotion_1-1.pth").strip() or "MimicMotion_1-1.pth"
     checkpoint_path = checkpoints_dir / ckpt_name
     if not checkpoint_path.exists():
-        huggingface_cli = venv_bin_dir / "huggingface-cli"
+        huggingface_cli = _huggingface_cli(venv_bin_dir)
         hf_repo = os.getenv("MIMICMOTION_HF_REPO", "Tencent/MimicMotion").strip() or "Tencent/MimicMotion"
         _run(
             [

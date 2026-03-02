@@ -23,6 +23,16 @@ def _run(cmd: list[str], cwd: Path | None = None) -> None:
         raise SystemExit(f"command failed: {' '.join(cmd)}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
 
 
+def _huggingface_cli(venv_bin_dir: Path) -> Path:
+    for name in ("huggingface-cli", "hf"):
+        candidate = venv_bin_dir / name
+        if candidate.exists():
+            return candidate
+    raise SystemExit(
+        f"Hugging Face CLI not found in {venv_bin_dir}; expected 'huggingface-cli' or 'hf'"
+    )
+
+
 def _weights_dir() -> Path:
     explicit = os.getenv("LIVEPORTRAIT_WEIGHTS_DIR", "").strip()
     if explicit:
@@ -38,7 +48,7 @@ def _ensure_weights(repo_dir: Path, venv_bin_dir: Path) -> Path:
     sentinel = weights_dir / "liveportrait" / "base_models" / "appearance_feature_extractor.pth"
     weights_dir.mkdir(parents=True, exist_ok=True)
     if not sentinel.exists():
-        huggingface_cli = venv_bin_dir / "huggingface-cli"
+        huggingface_cli = _huggingface_cli(venv_bin_dir)
         hf_repo = os.getenv("LIVEPORTRAIT_HF_REPO", "KlingTeam/LivePortrait").strip() or "KlingTeam/LivePortrait"
         _run(
             [
