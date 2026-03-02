@@ -52,7 +52,7 @@ RUN python3 -m venv --system-site-packages /opt/mimicmotion-venv && \
 
 RUN if [ -f "${MIMICMOTION_REPO_DIR}/requirements.txt" ]; then "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir -r "${MIMICMOTION_REPO_DIR}/requirements.txt"; fi
 
-RUN "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir "huggingface_hub[cli]" omegaconf einops pyyaml decord
+RUN "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir "huggingface_hub[cli]" omegaconf einops pyyaml decord matplotlib
 
 RUN cd "${MIMICMOTION_REPO_DIR}" && \
     "${MIMICMOTION_VENV_BIN}/python" -c "import cv2, decord, torch, yaml; from mimicmotion.dwpose import preprocess; print('mimicmotion-deps-ok', torch.cuda.is_available())" && \
