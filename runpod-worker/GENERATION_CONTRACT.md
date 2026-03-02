@@ -2,6 +2,11 @@
 
 The generation worker uses two JSON contracts and two optional adapter commands.
 
+Current first real backend in this repo:
+
+- render: `/worker/src/generation_render_cogvideox.py`
+- refine: `/worker/src/generation_refine_basic.py`
+
 ## Files
 
 - `identity_pack.json`
@@ -64,3 +69,16 @@ The generation image ships with demo adapters:
 - `/worker/scripts/example_generation_refine.py`
 
 They are placeholders for local verification only.
+
+## First real backend limitations
+
+The initial self-hosted backend is intentionally narrow:
+
+- uses CogVideoX image-to-video on Runpod GPU
+- uses the primary identity image only
+- does not yet fuse multiple identity images
+- does not yet consume identity video
+- does not yet consume motion reference video
+- refine stage is currently a passthrough copy stage
+
+This is still a real self-hosted generation path, but not the final industry-grade identity stack yet.

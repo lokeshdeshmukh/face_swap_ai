@@ -59,14 +59,26 @@ def _check_onnxruntime_cuda_provider() -> List[str]:
     return []
 
 
+def _check_torch_cuda() -> List[str]:
+    try:
+        torch = importlib.import_module("torch")
+    except Exception as exc:  # pragma: no cover - defensive in container
+        return [f"cannot import torch: {exc}"]
+
+    if not torch.cuda.is_available():
+        return ["torch cuda is not available"]
+    return []
+
+
 def run_preflight() -> Dict[str, object]:
     errors: List[str] = []
     warnings: List[str] = []
     worker_pipeline_mode = os.getenv("WORKER_PIPELINE_MODE", "hybrid").strip().lower()
 
     if worker_pipeline_mode == "generation":
-        errors.extend(_check_python_modules(["requests", "runpod"]))
+        errors.extend(_check_python_modules(["requests", "runpod", "torch", "diffusers", "transformers", "accelerate", "PIL"]))
         errors.extend(_check_binaries(["ffmpeg"]))
+        errors.extend(_check_torch_cuda())
     else:
         errors.extend(_check_python_modules(["requests", "runpod", "cv2", "onnxruntime", "scipy", "onnx"]))
         errors.extend(_check_binaries(["ffmpeg", "facefusion"]))

@@ -44,6 +44,11 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
 - Generation workers can use `Dockerfile.generation` with `WORKER_PIPELINE_MODE=generation`.
 - Contract parsing/validation lives in `/worker/src/generation_contract.py`.
 - To plug in a real in-house generation stack, implement the adapter CLI in `GENERATION_CONTRACT.md`.
+- Default generation backend in this repo:
+  - render: `python3 /worker/src/generation_render_cogvideox.py`
+  - refine: `python3 /worker/src/generation_refine_basic.py`
+- Default model:
+  - `GENERATION_MODEL_ID=THUDM/CogVideoX-5b-I2V`
 - Preferred split for staged pipelines:
   - `GENERATION_RENDER_COMMAND`
   - `GENERATION_REFINE_COMMAND`
@@ -61,10 +66,19 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
 - Example local env for the generation image:
   - `GENERATION_RENDER_COMMAND="python3 /worker/scripts/example_generation_render.py"`
   - `GENERATION_REFINE_COMMAND="python3 /worker/scripts/example_generation_refine.py"`
-- If `GENERATION_PIPELINE_COMMAND` is not set, the worker produces a placeholder motion preview from the first identity image.
+- Useful generation env overrides:
+  - `GENERATION_MODEL_ID`
+  - `GENERATION_MODEL_DTYPE=auto|bf16|fp16`
+  - `GENERATION_OFFLOAD_MODE=model|sequential|none`
+  - `GENERATION_NUM_INFERENCE_STEPS`
+  - `GENERATION_NUM_FRAMES`
+  - `GENERATION_OUTPUT_FPS`
+  - `GENERATION_GUIDANCE_SCALE`
+- If you explicitly point the generation worker back to the example adapters, output will be placeholder/demo quality.
 - Build now pins FaceFusion via `FACEFUSION_REF` (default `3.5.3`) for reproducible images.
 - Worker startup runs a dependency preflight:
-  - Required: `ffmpeg`, `facefusion`, Python modules `requests`, `runpod`, `cv2`, `onnxruntime`, `onnx`, `scipy`.
+  - Generation mode required: `ffmpeg`, Python modules `requests`, `runpod`, `torch`, `diffusers`, `transformers`, `accelerate`, `PIL`, plus CUDA available in `torch`.
+  - Legacy mode required: `ffmpeg`, `facefusion`, Python modules `requests`, `runpod`, `cv2`, `onnxruntime`, `onnx`, `scipy`.
   - Optional-by-default: `liveportrait`, `musetalk`, `realesrgan-ncnn-vulkan`.
 - Runtime download provider can be controlled with:
   - `FACEFUSION_DOWNLOAD_PROVIDERS="huggingface github"` (default)

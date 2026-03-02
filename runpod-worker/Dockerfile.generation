@@ -4,27 +4,35 @@ WORKDIR /worker
 
 ENV WORKER_PIPELINE_MODE=generation
 ENV PYTHONPATH=/worker/src
+ENV GENERATION_RENDER_COMMAND="python3 /worker/src/generation_render_cogvideox.py"
+ENV GENERATION_REFINE_COMMAND="python3 /worker/src/generation_refine_basic.py"
+ENV GENERATION_MODEL_ID="THUDM/CogVideoX-5b-I2V"
+ENV GENERATION_OFFLOAD_MODE=model
+ENV GENERATION_MODEL_DTYPE=auto
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg git && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /worker/requirements.txt
+COPY requirements.generation.txt /worker/requirements.generation.txt
 RUN set -eux; \
     ln -sf "$(command -v python3)" /usr/local/bin/python; \
     python3 -m ensurepip --upgrade || true; \
     python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel; \
+    python3 -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu121 torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1; \
     python3 -m pip install --no-cache-dir -r /worker/requirements.txt; \
-    python3 -c "import requests, runpod; print('deps-ok')"
+    python3 -m pip install --no-cache-dir -r /worker/requirements.generation.txt; \
+    python3 -c "import requests, runpod, torch, diffusers, transformers, accelerate, PIL; print('deps-ok')"
 
 COPY src /worker/src
 COPY scripts /worker/scripts
-RUN chmod +x /worker/scripts/example_generation_render.py /worker/scripts/example_generation_refine.py
+RUN chmod +x /worker/scripts/example_generation_render.py /worker/scripts/example_generation_refine.py && \
+    chmod +x /worker/src/generation_render_cogvideox.py /worker/src/generation_refine_basic.py
 WORKDIR /worker/src
 
-# Plug your in-house generation stack in via environment-configured commands:
-# - GENERATION_RENDER_COMMAND
-# - GENERATION_REFINE_COMMAND
-# Optional legacy support can still be added by extending this image further.
+# Default generation backend is self-hosted CogVideoX image-to-video.
+# Override GENERATION_RENDER_COMMAND / GENERATION_REFINE_COMMAND if you want
+# to swap to another in-repo backend without changing the worker contract.
 
 CMD ["python3", "-u", "handler.py"]

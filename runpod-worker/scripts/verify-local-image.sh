@@ -33,6 +33,10 @@ if not os.path.exists("/worker/scripts/example_generation_render.py"):
     raise RuntimeError("example_generation_render.py missing")
 if not os.path.exists("/worker/scripts/example_generation_refine.py"):
     raise RuntimeError("example_generation_refine.py missing")
+if not os.path.exists("/worker/src/generation_render_cogvideox.py"):
+    raise RuntimeError("generation_render_cogvideox.py missing")
+if not os.path.exists("/worker/src/generation_refine_basic.py"):
+    raise RuntimeError("generation_refine_basic.py missing")
 if shutil.which("ffmpeg") is None:
     raise RuntimeError("ffmpeg missing")
 print("generation-import-check: ok")
