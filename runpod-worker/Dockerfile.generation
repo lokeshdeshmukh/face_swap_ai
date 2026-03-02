@@ -43,15 +43,19 @@ RUN set -eux; \
     python3 -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu121 torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1; \
     python3 -m pip install --no-cache-dir -r /worker/requirements.txt; \
     python3 -m pip install --no-cache-dir -r /worker/requirements.generation.txt; \
-    python3 -c "import requests, runpod, torch, diffusers, transformers, accelerate, PIL; print('deps-ok')"; \
-    git clone --depth 1 --branch "${MIMICMOTION_REF}" https://github.com/Tencent/MimicMotion.git "${MIMICMOTION_REPO_DIR}"; \
-    python3 -m venv /opt/mimicmotion-venv; \
-    "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir --upgrade pip setuptools wheel; \
-    "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu121 torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0; \
-    if [ -f "${MIMICMOTION_REPO_DIR}/requirements.txt" ]; then "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir -r "${MIMICMOTION_REPO_DIR}/requirements.txt"; fi; \
-    "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir "huggingface_hub[cli]" omegaconf einops pyyaml; \
-    "${MIMICMOTION_VENV_BIN}/python" -c "import cv2, torch, yaml; print('mimicmotion-deps-ok', torch.cuda.is_available())"; \
-    test -f "${MIMICMOTION_REPO_DIR}/inference.py"; \
+    python3 -c "import requests, runpod, torch, diffusers, transformers, accelerate, PIL; print('deps-ok')"
+
+RUN git clone --depth 1 --branch "${MIMICMOTION_REF}" https://github.com/Tencent/MimicMotion.git "${MIMICMOTION_REPO_DIR}"
+
+RUN python3 -m venv --system-site-packages /opt/mimicmotion-venv && \
+    "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir --upgrade pip setuptools wheel
+
+RUN if [ -f "${MIMICMOTION_REPO_DIR}/requirements.txt" ]; then "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir -r "${MIMICMOTION_REPO_DIR}/requirements.txt"; fi
+
+RUN "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir "huggingface_hub[cli]" omegaconf einops pyyaml
+
+RUN "${MIMICMOTION_VENV_BIN}/python" -c "import cv2, torch, yaml; print('mimicmotion-deps-ok', torch.cuda.is_available())" && \
+    test -f "${MIMICMOTION_REPO_DIR}/inference.py" && \
     test -x "${MIMICMOTION_VENV_BIN}/python"
 
 COPY src /worker/src
