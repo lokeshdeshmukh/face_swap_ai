@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import os
+import shlex
 import logging
 from pathlib import Path
 from typing import List, Optional
@@ -178,6 +180,92 @@ def _restore_audio_from_driving_if_missing(driving_audio: Path, output_video: Pa
     _run(remux_cmd)
     remuxed.replace(output_video)
     logger.info("restored audio stream from driving audio into photo_sing output")
+
+
+def run_ai_video_generate(
+    source_images: List[Path],
+    identity_video: Optional[Path],
+    motion_reference_video: Optional[Path],
+    driving_audio: Optional[Path],
+    output_video: Path,
+    quality: str,
+    aspect_ratio: str,
+    job_config: dict[str, object],
+) -> None:
+    generation_command = os.getenv("GENERATION_PIPELINE_COMMAND", "").strip()
+
+    if generation_command:
+        config_path = output_video.with_suffix(".generation.json")
+        config_path.write_text(
+            json.dumps(
+                {
+                    "source_images": [str(path) for path in source_images],
+                    "identity_video": str(identity_video) if identity_video and identity_video.exists() else None,
+                    "motion_reference_video": (
+                        str(motion_reference_video)
+                        if motion_reference_video and motion_reference_video.exists()
+                        else None
+                    ),
+                    "driving_audio": str(driving_audio) if driving_audio and driving_audio.exists() else None,
+                    "output_video": str(output_video),
+                    "quality": quality,
+                    "aspect_ratio": aspect_ratio,
+                    "job_config": job_config,
+                },
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
+        )
+        cmd = [*shlex.split(generation_command), "--config", str(config_path), "--output", str(output_video)]
+        _run(cmd)
+        return
+
+    source_image = source_images[0] if source_images else None
+    if source_image is None:
+        raise PipelineError("generation modes require at least one identity image or a source video")
+
+    duration = max(2, min(int(job_config.get("duration_seconds", 5)), 20))
+    output_scale = {
+        "9:16": "1080:1920",
+        "1:1": "1080:1080",
+        "4:5": "1080:1350",
+    }.get(aspect_ratio, "1080:1920")
+    zoom_speed = "0.0015" if quality == "max" else "0.0010"
+    fps = "24"
+    vf = (
+        f"scale={output_scale}:force_original_aspect_ratio=increase,"
+        f"crop={output_scale},"
+        f"zoompan=z='min(zoom+{zoom_speed},1.15)':d=1:"
+        f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={output_scale}:fps={fps},"
+        "format=yuv420p"
+    )
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-loop",
+        "1",
+        "-i",
+        str(source_image),
+        "-vf",
+        vf,
+        "-t",
+        str(duration),
+        "-r",
+        fps,
+        "-c:v",
+        "libx264",
+        str(output_video),
+    ]
+    _run(cmd)
+    logger.warning(
+        "GENERATION_PIPELINE_COMMAND not set; produced placeholder preview from identity image instead of full generation"
+    )
+
+    if driving_audio and driving_audio.exists():
+        try:
+            _restore_audio_from_driving_if_missing(driving_audio, output_video)
+        except Exception as exc:
+            logger.warning("generation audio restore step failed: %s", exc)
 
 
 def run_video_swap(

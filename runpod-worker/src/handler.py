@@ -16,6 +16,7 @@ from typing import Any, Dict, Optional
 import requests
 import runpod
 
+from generation import GenerationError, build_identity_pack, build_shot_plan, refine_generation, render_generation
 from preflight import PreflightError, run_preflight
 from pipeline import PipelineError, run_4k_enhance, run_photo_sing, run_video_swap
 
@@ -136,6 +137,32 @@ def _callback(url: str, secret: str, body: Dict[str, Any]) -> None:
     response.raise_for_status()
 
 
+def _emit_progress(
+    callback_url: Optional[str],
+    callback_secret: Optional[str],
+    job_id: str,
+    stage: str,
+    extra_metadata: Optional[dict[str, object]] = None,
+) -> None:
+    if not callback_url or not callback_secret:
+        return
+    metadata = {"stage": stage}
+    if extra_metadata:
+        metadata.update({str(key): str(value) for key, value in extra_metadata.items() if value is not None})
+    try:
+        _callback(
+            callback_url,
+            callback_secret,
+            {
+                "job_id": job_id,
+                "status": "processing",
+                "metadata": metadata,
+            },
+        )
+    except requests.RequestException:
+        pass
+
+
 def _extract_audio(video_path: Path, audio_out: Path) -> None:
     cmd = [
         "ffmpeg",
@@ -211,6 +238,10 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
     job_id = str(payload["job_id"])
     mode = str(payload["mode"])
     quality = str(payload.get("quality", "balanced"))
+    aspect_ratio = str(payload.get("aspect_ratio", "9:16"))
+    job_config = payload.get("job_config", {})
+    if not isinstance(job_config, dict):
+        job_config = {}
     raw_enable_4k = payload.get("enable_4k", False)
     if isinstance(raw_enable_4k, str):
         enable_4k = raw_enable_4k.lower() in {"1", "true", "yes", "on"}
@@ -248,8 +279,10 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
             driving_audio = tmp_path / "driving_audio.wav"
             out_main = tmp_path / "result.mp4"
             source_images: list[Path] = []
-
-            _download(str(assets["reference_video_url"]), reference_video)
+            reference_video_url = assets.get("reference_video_url")
+            has_reference_video = bool(reference_video_url)
+            if has_reference_video:
+                _download(str(reference_video_url), reference_video)
 
             source_image_urls = assets.get("source_image_urls")
             if isinstance(source_image_urls, list):
@@ -277,10 +310,49 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
                 extracted = _extract_source_frames(source_video, tmp_path / "source_frames", max_frames=max_frames, fps=fps)
                 source_images.extend(extracted)
 
-            if mode == "video_swap" and not source_images:
-                raise ValueError("video_swap requires source_image(s) or source_video")
+            if mode in {"ai_video_generate", "photo_to_video"}:
+                if "driving_audio_url" in assets:
+                    _download(str(assets["driving_audio_url"]), driving_audio)
+                    driving_audio_path: Path | None = driving_audio
+                else:
+                    driving_audio_path = None
 
-            if mode == "video_swap":
+                def _progress(stage: str, metadata: dict[str, object] | None = None) -> None:
+                    _emit_progress(callback_url, callback_secret, job_id, stage, metadata)
+
+                identity_pack_path = build_identity_pack(
+                    source_images=source_images,
+                    identity_video=source_video if has_source_video else None,
+                    output_dir=tmp_path / "generation",
+                    progress=_progress,
+                )
+                shot_plan_path = build_shot_plan(
+                    identity_pack_path=identity_pack_path,
+                    motion_reference_video=reference_video if has_reference_video else None,
+                    driving_audio=driving_audio_path,
+                    output_dir=tmp_path / "generation",
+                    quality=quality,
+                    aspect_ratio=aspect_ratio,
+                    job_config=job_config,
+                    progress=_progress,
+                )
+                rendered_out = tmp_path / "rendered.mp4"
+                render_generation(
+                    shot_plan_path=shot_plan_path,
+                    output_video=rendered_out,
+                    progress=_progress,
+                )
+                refine_generation(
+                    rendered_video=rendered_out,
+                    identity_pack_path=identity_pack_path,
+                    output_video=out_main,
+                    progress=_progress,
+                )
+            elif mode == "video_swap":
+                if not has_reference_video:
+                    raise ValueError("video_swap requires reference_video")
+                if not source_images:
+                    raise ValueError("video_swap requires source_image(s) or source_video")
                 run_video_swap(
                     source_images=source_images,
                     target_video=reference_video,
@@ -288,6 +360,8 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
                     quality=quality,
                 )
             elif mode == "photo_sing":
+                if not has_reference_video:
+                    raise ValueError("photo_sing requires reference_video")
                 photo_source_image: Path | None = source_images[0] if source_images else None
                 if photo_source_image is None and has_source_video:
                     photo_source_image = _extract_first_frame(source_video, tmp_path / "source_from_video.jpg")
@@ -334,7 +408,7 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
                     pass
             return {"ok": True, "job_id": job_id, "status": "completed", **success_body}
 
-    except (requests.RequestException, PipelineError, ValueError, KeyError) as exc:
+    except (requests.RequestException, PipelineError, GenerationError, ValueError, KeyError) as exc:
         failure_body = {
             "job_id": job_id,
             "status": "failed",

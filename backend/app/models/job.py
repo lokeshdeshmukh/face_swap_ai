@@ -21,6 +21,7 @@ class Job(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
     stage: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
     stage_timings_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    input_config_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
 
     reference_video_path: Mapped[str] = mapped_column(Text, nullable=False)
     source_image_path: Mapped[str] = mapped_column(Text, nullable=False)

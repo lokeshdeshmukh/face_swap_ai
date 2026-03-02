@@ -19,14 +19,20 @@ async def create_job(
     quality: QualityTier = Form(QualityTier.balanced),
     enable_4k: bool = Form(False),
     aspect_ratio: AspectRatio = Form(AspectRatio.portrait),
-    reference_video: UploadFile = File(...),
+    prompt: str | None = Form(None),
+    negative_prompt: str | None = Form(None),
+    motion_preset: str | None = Form(None),
+    style_preset: str | None = Form(None),
+    duration_seconds: int | None = Form(None),
+    seed: int | None = Form(None),
+    reference_video: UploadFile | None = File(None),
     source_image: UploadFile | None = File(None),  # legacy single-source field
     source_images: list[UploadFile] | None = File(None),
     source_video: UploadFile | None = File(None),
     driving_audio: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ) -> JobCreateResponse:
-    reference_video_bytes = await reference_video.read()
+    reference_video_bytes = await reference_video.read() if reference_video else None
     source_uploads: list[UploadFile] = []
     if source_image is not None:
         source_uploads.append(source_image)
@@ -48,13 +54,19 @@ async def create_job(
             quality=quality,
             enable_4k=enable_4k,
             aspect_ratio=aspect_ratio,
-            reference_video_name=reference_video.filename or "reference.mp4",
+            reference_video_name=reference_video.filename if reference_video else None,
             reference_video_bytes=reference_video_bytes,
             source_images=source_image_payloads,
             source_video_name=source_video.filename if source_video else None,
             source_video_bytes=source_video_bytes,
             driving_audio_name=driving_audio.filename if driving_audio else None,
             driving_audio_bytes=driving_audio_bytes,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            motion_preset=motion_preset,
+            style_preset=style_preset,
+            duration_seconds=duration_seconds,
+            seed=seed,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -107,6 +119,7 @@ def get_job(job_id: str, db: Session = Depends(get_db)) -> JobStatusResponse:
         runpod_job_id=job.runpod_job_id,
         error_message=job.error_message,
         stage_timings=timings,
+        input_config=container.job_service._parse_input_config(job.input_config_json),
         output_url=container.job_service.build_output_url(job),
     )
 

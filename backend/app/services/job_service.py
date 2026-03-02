@@ -42,6 +42,10 @@ class JobService:
         )
         return db.execute(stmt).scalars().first()
 
+    @staticmethod
+    def _is_generation_mode(mode: JobMode) -> bool:
+        return mode in {JobMode.ai_video_generate, JobMode.photo_to_video}
+
     def create_job(
         self,
         db: Session,
@@ -49,17 +53,25 @@ class JobService:
         quality: QualityTier,
         enable_4k: bool,
         aspect_ratio: AspectRatio,
-        reference_video_name: str,
-        reference_video_bytes: bytes,
+        reference_video_name: str | None,
+        reference_video_bytes: bytes | None,
         source_images: list[tuple[str, bytes]],
         source_video_name: str | None,
         source_video_bytes: bytes | None,
         driving_audio_name: str | None,
         driving_audio_bytes: bytes | None,
+        prompt: str | None,
+        negative_prompt: str | None,
+        motion_preset: str | None,
+        style_preset: str | None,
+        duration_seconds: int | None,
+        seed: int | None,
     ) -> Job:
         job_id = str(uuid.uuid4())
+        is_generation_mode = self._is_generation_mode(mode)
 
-        validate_extension(reference_video_name, "video")
+        if reference_video_name and reference_video_bytes:
+            validate_extension(reference_video_name, "video")
         if not source_images and not source_video_bytes:
             raise ValueError("at least one source image or a source video is required")
         for source_image_name, _ in source_images:
@@ -69,7 +81,13 @@ class JobService:
         if driving_audio_name:
             validate_extension(driving_audio_name, "audio")
 
-        self._validate_size(reference_video_bytes)
+        if not is_generation_mode and not reference_video_bytes:
+            raise ValueError("reference video is required for legacy modes")
+        if is_generation_mode and not (prompt or "").strip():
+            raise ValueError("prompt is required for generation modes")
+
+        if reference_video_bytes:
+            self._validate_size(reference_video_bytes)
         for _, source_image_bytes in source_images:
             self._validate_size(source_image_bytes)
         if source_video_bytes:
@@ -77,16 +95,27 @@ class JobService:
         if driving_audio_bytes:
             self._validate_size(driving_audio_bytes)
 
+        input_config = self._build_input_config(
+            mode=mode,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            motion_preset=motion_preset,
+            style_preset=style_preset,
+            duration_seconds=duration_seconds,
+            seed=seed,
+        )
+
         config_hash = stable_config_hash(
             [
                 mode.value,
                 quality.value,
                 str(enable_4k),
                 aspect_ratio.value,
-                self._sha256_bytes(reference_video_bytes),
+                self._sha256_bytes(reference_video_bytes) if reference_video_bytes else "",
                 ",".join(self._sha256_bytes(source_image_bytes) for _, source_image_bytes in source_images),
                 self._sha256_bytes(source_video_bytes) if source_video_bytes else "",
                 self._sha256_bytes(driving_audio_bytes) if driving_audio_bytes else "",
+                json.dumps(input_config, sort_keys=True, separators=(",", ":")),
             ]
         )
 
@@ -96,7 +125,9 @@ class JobService:
         if existing and existing.status in {"queued", "processing"}:
             return existing
 
-        reference_video_path = self.storage.persist_upload(job_id, reference_video_name, reference_video_bytes)
+        reference_video_path = ""
+        if reference_video_name and reference_video_bytes:
+            reference_video_path = self.storage.persist_upload(job_id, reference_video_name, reference_video_bytes)
         source_image_refs: list[str] = []
         for idx, (source_image_name, source_image_bytes) in enumerate(source_images):
             ext = Path(source_image_name).suffix.lower() or ".jpg"
@@ -134,6 +165,7 @@ class JobService:
             status="queued",
             stage="queued",
             stage_timings_json=json.dumps(timings),
+            input_config_json=json.dumps(input_config, separators=(",", ":")),
             reference_video_path=reference_video_path,
             source_image_path=source_manifest,
             driving_audio_path=driving_audio_path,
@@ -172,11 +204,11 @@ class JobService:
         if not source_image_refs and not source_video_ref:
             raise RuntimeError("job has no source assets")
 
-        asset_urls: dict[str, object] = {
-            "reference_video_url": self.storage.build_asset_url(
+        asset_urls: dict[str, object] = {}
+        if job.reference_video_path:
+            asset_urls["reference_video_url"] = self.storage.build_asset_url(
                 job.reference_video_path, settings.asset_token_ttl_seconds
-            ),
-        }
+            )
         if source_image_refs:
             source_image_urls = [
                 self.storage.build_asset_url(source_ref, settings.asset_token_ttl_seconds)
@@ -200,6 +232,7 @@ class JobService:
 
         callback_url = self._callback_url_or_none()
         callback_secret = settings.callback_secret if callback_url else None
+        job_config = self._parse_input_config(job.input_config_json)
 
         self._start_stage(job, "generating", "processing")
         db.add(job)
@@ -208,6 +241,7 @@ class JobService:
         runpod_job_id, request_id = await self.compute.submit_job(
             job=job,
             asset_urls=asset_urls,
+            job_config=job_config,
             output_target=output_target,
             callback_url=callback_url,
             callback_secret=callback_secret,
@@ -312,6 +346,14 @@ class JobService:
             db.refresh(job)
             return job
 
+        if payload.status.lower() in {"processing", "in_progress", "progress"}:
+            stage = (payload.metadata.get("stage") or "generating").strip() or "generating"
+            self._start_stage(job, stage, "processing")
+            db.add(job)
+            db.commit()
+            db.refresh(job)
+            return job
+
         self._start_stage(job, "enhancing", "processing")
         db.add(job)
         db.commit()
@@ -351,6 +393,30 @@ class JobService:
         return self.storage.build_output_url(job.id, job.output_path, settings.output_url_ttl_seconds)
 
     @staticmethod
+    def _build_input_config(
+        mode: JobMode,
+        prompt: str | None,
+        negative_prompt: str | None,
+        motion_preset: str | None,
+        style_preset: str | None,
+        duration_seconds: int | None,
+        seed: int | None,
+    ) -> dict[str, object]:
+        payload: dict[str, object] = {"version": 1}
+        if JobService._is_generation_mode(mode):
+            payload.update(
+                {
+                    "prompt": (prompt or "").strip(),
+                    "negative_prompt": (negative_prompt or "").strip(),
+                    "motion_preset": (motion_preset or "cinematic_dolly").strip(),
+                    "style_preset": (style_preset or "studio_realism").strip(),
+                    "duration_seconds": max(2, min(int(duration_seconds or 5), 20)),
+                    "seed": seed,
+                }
+            )
+        return payload
+
+    @staticmethod
     def _build_source_manifest(
         primary_image_ref: str | None,
         source_image_refs: list[str],
@@ -377,6 +443,16 @@ class JobService:
             pass
         # Backward compatibility for pre-manifest rows.
         return ([raw] if raw else []), None
+
+    @staticmethod
+    def _parse_input_config(raw: str | None) -> dict[str, object]:
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
 
     @staticmethod
     def _sha256_bytes(content: bytes) -> str:

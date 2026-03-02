@@ -9,6 +9,7 @@ from app.api.router import api_router
 from app.core.config import cors_origins, ensure_data_dirs, settings
 from app.core.container import container
 from app.db.base import Base
+from app.db.migrations import ensure_schema
 from app.db.session import engine
 
 logging.basicConfig(
@@ -32,6 +33,7 @@ app.include_router(api_router, prefix=settings.api_prefix)
 async def on_startup() -> None:
     ensure_data_dirs()
     Base.metadata.create_all(bind=engine)
+    ensure_schema(engine)
     await container.queue_provider.start()
 
 

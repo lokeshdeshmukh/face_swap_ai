@@ -9,6 +9,7 @@ class MockComputeProvider(ComputeProvider):
         self,
         job: Job,
         asset_urls: dict[str, object],
+        job_config: dict[str, object] | None,
         output_target: dict[str, str] | None,
         callback_url: str | None,
         callback_secret: str | None,

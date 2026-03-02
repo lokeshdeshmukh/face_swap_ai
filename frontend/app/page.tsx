@@ -4,15 +4,24 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { apiBase, type JobStatus } from "../lib/api";
 
-type Mode = "video_swap" | "photo_sing";
+type Mode = "ai_video_generate" | "photo_to_video" | "video_swap" | "photo_sing";
 type Quality = "fast" | "balanced" | "max";
 type AspectRatio = "9:16" | "1:1" | "4:5";
 
+const GENERATION_MODES: Mode[] = ["ai_video_generate", "photo_to_video"];
+
 export default function HomePage() {
-  const [mode, setMode] = useState<Mode>("video_swap");
+  const [mode, setMode] = useState<Mode>("ai_video_generate");
   const [quality, setQuality] = useState<Quality>("balanced");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   const [enable4k, setEnable4k] = useState(false);
+
+  const [prompt, setPrompt] = useState("");
+  const [negativePrompt, setNegativePrompt] = useState("");
+  const [motionPreset, setMotionPreset] = useState("cinematic_dolly");
+  const [stylePreset, setStylePreset] = useState("studio_realism");
+  const [durationSeconds, setDurationSeconds] = useState("5");
+  const [seed, setSeed] = useState("");
 
   const [referenceVideo, setReferenceVideo] = useState<File | null>(null);
   const [sourceImages, setSourceImages] = useState<File[]>([]);
@@ -24,10 +33,18 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const isGenerationMode = GENERATION_MODES.includes(mode);
+  const needsReferenceVideo = !isGenerationMode;
+
   const pollEnabled = useMemo(
     () => Boolean(jobId && job?.status !== "done" && job?.status !== "failed"),
     [jobId, job?.status],
   );
+
+  const orderedStages = useMemo(() => {
+    const timings = job?.stage_timings ?? {};
+    return Object.keys(timings);
+  }, [job?.stage_timings]);
 
   useEffect(() => {
     if (!jobId) return;
@@ -65,8 +82,16 @@ export default function HomePage() {
     event.preventDefault();
     setError(null);
 
-    if (!referenceVideo || (sourceImages.length === 0 && !sourceVideo)) {
-      setError("Reference video and at least one source image or source video are required.");
+    if (sourceImages.length === 0 && !sourceVideo) {
+      setError("At least one identity image or identity video is required.");
+      return;
+    }
+    if (needsReferenceVideo && !referenceVideo) {
+      setError("Reference video is required for legacy modes.");
+      return;
+    }
+    if (isGenerationMode && !prompt.trim()) {
+      setError("Prompt is required for generation modes.");
       return;
     }
 
@@ -75,7 +100,13 @@ export default function HomePage() {
     form.append("quality", quality);
     form.append("enable_4k", String(enable4k));
     form.append("aspect_ratio", aspectRatio);
-    form.append("reference_video", referenceVideo);
+    form.append("prompt", prompt);
+    form.append("negative_prompt", negativePrompt);
+    form.append("motion_preset", motionPreset);
+    form.append("style_preset", stylePreset);
+    form.append("duration_seconds", durationSeconds);
+    if (seed.trim()) form.append("seed", seed.trim());
+    if (referenceVideo) form.append("reference_video", referenceVideo);
     sourceImages.forEach((file) => form.append("source_images", file));
     if (sourceVideo) form.append("source_video", sourceVideo);
     if (drivingAudio) form.append("driving_audio", drivingAudio);
@@ -91,6 +122,7 @@ export default function HomePage() {
         throw new Error(data.detail ?? `Create job failed: ${response.status}`);
       }
       setJobId(data.id);
+      setJob(null);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unexpected create job error");
     } finally {
@@ -100,9 +132,10 @@ export default function HomePage() {
 
   return (
     <main>
-      <h1>TrueFaceSwapVideo POC</h1>
+      <h1>TrueFaceSwapVideo</h1>
       <p className="muted">
-        Local-first orchestration with Runpod Serverless. Upload Instagram-style inputs and track job stages.
+        Generation-first workflow for in-house identity video pipelines. Legacy face-swap modes remain available
+        for compatibility.
       </p>
 
       <form className="card" onSubmit={onSubmit}>
@@ -110,8 +143,10 @@ export default function HomePage() {
           <div>
             <label htmlFor="mode">Mode</label>
             <select id="mode" value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
-              <option value="video_swap">Exact Movement Face Swap</option>
-              <option value="photo_sing">Photo to Singing</option>
+              <option value="ai_video_generate">AI Video Generation</option>
+              <option value="photo_to_video">Photo to Video</option>
+              <option value="video_swap">Legacy Face Swap</option>
+              <option value="photo_sing">Legacy Photo Sing</option>
             </select>
           </div>
 
@@ -131,7 +166,7 @@ export default function HomePage() {
               value={aspectRatio}
               onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
             >
-              <option value="9:16">9:16 (Instagram Reels)</option>
+              <option value="9:16">9:16</option>
               <option value="1:1">1:1</option>
               <option value="4:5">4:5</option>
             </select>
@@ -146,9 +181,84 @@ export default function HomePage() {
           </div>
         </div>
 
+        {isGenerationMode ? (
+          <div className="grid" style={{ marginTop: 12 }}>
+            <div>
+              <label htmlFor="prompt">Prompt</label>
+              <textarea id="prompt" rows={4} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+            </div>
+
+            <div>
+              <label htmlFor="negativePrompt">Negative Prompt</label>
+              <textarea
+                id="negativePrompt"
+                rows={4}
+                value={negativePrompt}
+                onChange={(e) => setNegativePrompt(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="motionPreset">Motion Preset</label>
+              <input id="motionPreset" value={motionPreset} onChange={(e) => setMotionPreset(e.target.value)} />
+            </div>
+
+            <div>
+              <label htmlFor="stylePreset">Style Preset</label>
+              <input id="stylePreset" value={stylePreset} onChange={(e) => setStylePreset(e.target.value)} />
+            </div>
+
+            <div>
+              <label htmlFor="durationSeconds">Duration (seconds)</label>
+              <input
+                id="durationSeconds"
+                type="number"
+                min={2}
+                max={20}
+                value={durationSeconds}
+                onChange={(e) => setDurationSeconds(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="seed">Seed (optional)</label>
+              <input id="seed" value={seed} onChange={(e) => setSeed(e.target.value)} />
+            </div>
+          </div>
+        ) : null}
+
         <div className="grid" style={{ marginTop: 12 }}>
           <div>
-            <label htmlFor="reference">Reference Video</label>
+            <label htmlFor="sourceImages">Identity Images</label>
+            <input
+              id="sourceImages"
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => setSourceImages(Array.from(e.target.files ?? []))}
+            />
+            <p className="muted" style={{ marginTop: 6 }}>
+              {sourceImages.length > 0 ? `${sourceImages.length} image(s) selected` : "No identity images selected"}
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="sourceVideo">Identity Video (optional)</label>
+            <input
+              id="sourceVideo"
+              type="file"
+              accept="video/*"
+              onChange={(e) => setSourceVideo(e.target.files?.[0] ?? null)}
+            />
+            <p className="muted" style={{ marginTop: 6 }}>
+              {sourceVideo ? sourceVideo.name : "No identity video selected"}
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="reference">
+              {isGenerationMode ? "Motion Reference Video (optional)" : "Reference Video"}
+            </label>
             <input
               id="reference"
               type="file"
@@ -158,34 +268,9 @@ export default function HomePage() {
           </div>
 
           <div>
-            <label htmlFor="sourceImages">Source Images (multiple allowed)</label>
-            <input
-              id="sourceImages"
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(e) => setSourceImages(Array.from(e.target.files ?? []))}
-            />
-            <p className="muted" style={{ marginTop: 6 }}>
-              {sourceImages.length > 0 ? `${sourceImages.length} image(s) selected` : "No source images selected"}
-            </p>
-          </div>
-
-          <div>
-            <label htmlFor="sourceVideo">Source Video (optional, recommended)</label>
-            <input
-              id="sourceVideo"
-              type="file"
-              accept="video/*"
-              onChange={(e) => setSourceVideo(e.target.files?.[0] ?? null)}
-            />
-            <p className="muted" style={{ marginTop: 6 }}>
-              {sourceVideo ? sourceVideo.name : "No source video selected"}
-            </p>
-          </div>
-
-          <div>
-            <label htmlFor="audio">Driving Audio (optional; falls back to reference video audio)</label>
+            <label htmlFor="audio">
+              {mode === "photo_sing" ? "Driving Audio (optional)" : "Audio / Narration (optional)"}
+            </label>
             <input
               id="audio"
               type="file"
@@ -214,9 +299,20 @@ export default function HomePage() {
           <h2 style={{ marginTop: 0 }}>Job Status</h2>
           <p>
             <span className="status-pill">ID: {jobId}</span>
+            <span className="status-pill">Mode: {job?.mode ?? mode}</span>
             <span className="status-pill">Status: {job?.status ?? "loading"}</span>
             <span className="status-pill">Stage: {job?.stage ?? "loading"}</span>
           </p>
+
+          {orderedStages.length > 0 ? (
+            <p className="muted">
+              Pipeline: {orderedStages.map((stage) => (stage === (job?.stage ?? "") ? `[${stage}]` : stage)).join(" -> ")}
+            </p>
+          ) : null}
+
+          {job?.input_config?.prompt ? (
+            <p className="muted">Prompt: {String(job.input_config.prompt)}</p>
+          ) : null}
 
           {job?.error_message ? <p className="error">{job.error_message}</p> : null}
 
@@ -230,7 +326,7 @@ export default function HomePage() {
               </p>
             </div>
           ) : (
-            <p className="muted">Waiting for Runpod completion callback...</p>
+            <p className="muted">Waiting for worker completion callback...</p>
           )}
         </section>
       ) : null}

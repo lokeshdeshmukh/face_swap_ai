@@ -16,6 +16,7 @@ class RunpodComputeProvider(ComputeProvider):
         self,
         job: Job,
         asset_urls: dict[str, object],
+        job_config: dict[str, object] | None,
         output_target: dict[str, str] | None,
         callback_url: str | None,
         callback_secret: str | None,
@@ -32,6 +33,8 @@ class RunpodComputeProvider(ComputeProvider):
             "aspect_ratio": job.aspect_ratio,
             "assets": asset_urls,
         }
+        if job_config:
+            worker_input["job_config"] = job_config
         if output_target:
             worker_input["output_target"] = output_target
         if callback_url and callback_secret:

@@ -8,12 +8,28 @@ This worker expects the backend payload contract documented in the root README.
 docker build -t truefaceswap-runpod-worker .
 ```
 
+Generation-only worker image:
+
+```bash
+docker build -f Dockerfile.generation -t truefaceswap-generation-worker .
+```
+
+Concrete generation contract:
+
+- `GENERATION_CONTRACT.md`
+
 ## Local Verification
 
 Run a full local smoke test before deploying to Runpod:
 
 ```bash
 bash scripts/verify-local-image.sh
+```
+
+Generation-only smoke test:
+
+```bash
+bash scripts/verify-local-image.sh truefaceswap-generation-worker:local generation
 ```
 
 ## Deploy
@@ -24,6 +40,28 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
 
 - This template assumes model CLIs are present in the image.
 - For production-sized outputs, replace `output_base64` with object-storage upload and return an `output_url`.
+- Generation-first modes (`ai_video_generate`, `photo_to_video`) accept a `job_config` payload.
+- Generation workers can use `Dockerfile.generation` with `WORKER_PIPELINE_MODE=generation`.
+- Contract parsing/validation lives in `/worker/src/generation_contract.py`.
+- To plug in a real in-house generation stack, implement the adapter CLI in `GENERATION_CONTRACT.md`.
+- Preferred split for staged pipelines:
+  - `GENERATION_RENDER_COMMAND`
+  - `GENERATION_REFINE_COMMAND`
+- Backward-compatible fallback:
+  - `GENERATION_PIPELINE_COMMAND` is treated like a render adapter and receives `--shot-plan ... --output ...`
+- Required render adapter args:
+  - `--shot-plan <json-path>`
+  - `--output <video-path>`
+  - optional `--report <json-path>`
+- Required refine adapter args:
+  - `--identity-pack <json-path>`
+  - `--input <video-path>`
+  - `--output <video-path>`
+  - optional `--report <json-path>`
+- Example local env for the generation image:
+  - `GENERATION_RENDER_COMMAND="python3 /worker/scripts/example_generation_render.py"`
+  - `GENERATION_REFINE_COMMAND="python3 /worker/scripts/example_generation_refine.py"`
+- If `GENERATION_PIPELINE_COMMAND` is not set, the worker produces a placeholder motion preview from the first identity image.
 - Build now pins FaceFusion via `FACEFUSION_REF` (default `3.5.3`) for reproducible images.
 - Worker startup runs a dependency preflight:
   - Required: `ffmpeg`, `facefusion`, Python modules `requests`, `runpod`, `cv2`, `onnxruntime`, `onnx`, `scipy`.

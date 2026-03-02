@@ -62,11 +62,16 @@ def _check_onnxruntime_cuda_provider() -> List[str]:
 def run_preflight() -> Dict[str, object]:
     errors: List[str] = []
     warnings: List[str] = []
+    worker_pipeline_mode = os.getenv("WORKER_PIPELINE_MODE", "hybrid").strip().lower()
 
-    errors.extend(_check_python_modules(["requests", "runpod", "cv2", "onnxruntime", "scipy", "onnx"]))
-    errors.extend(_check_binaries(["ffmpeg", "facefusion"]))
-    errors.extend(_check_facefusion_processor_import())
-    errors.extend(_check_onnxruntime_cuda_provider())
+    if worker_pipeline_mode == "generation":
+        errors.extend(_check_python_modules(["requests", "runpod"]))
+        errors.extend(_check_binaries(["ffmpeg"]))
+    else:
+        errors.extend(_check_python_modules(["requests", "runpod", "cv2", "onnxruntime", "scipy", "onnx"]))
+        errors.extend(_check_binaries(["ffmpeg", "facefusion"]))
+        errors.extend(_check_facefusion_processor_import())
+        errors.extend(_check_onnxruntime_cuda_provider())
 
     require_photo_sing = _env_bool("REQUIRE_PHOTO_SING_DEPS", False)
     photo_sing_missing = _check_binaries(["liveportrait", "musetalk"])

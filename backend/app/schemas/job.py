@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 
 
 class JobMode(str, Enum):
+    ai_video_generate = "ai_video_generate"
+    photo_to_video = "photo_to_video"
     video_swap = "video_swap"
     photo_sing = "photo_sing"
 
@@ -45,6 +47,7 @@ class JobStatusResponse(BaseModel):
     runpod_job_id: str | None
     error_message: str | None
     stage_timings: dict[str, dict[str, str]]
+    input_config: dict[str, object]
     output_url: str | None
 
 class RunpodCallbackPayload(BaseModel):

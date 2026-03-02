@@ -1,0 +1,30 @@
+FROM runpod/base:0.4.1-cuda12.1.0
+
+WORKDIR /worker
+
+ENV WORKER_PIPELINE_MODE=generation
+ENV PYTHONPATH=/worker/src
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg git && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt /worker/requirements.txt
+RUN set -eux; \
+    ln -sf "$(command -v python3)" /usr/local/bin/python; \
+    python3 -m ensurepip --upgrade || true; \
+    python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel; \
+    python3 -m pip install --no-cache-dir -r /worker/requirements.txt; \
+    python3 -c "import requests, runpod; print('deps-ok')"
+
+COPY src /worker/src
+COPY scripts /worker/scripts
+RUN chmod +x /worker/scripts/example_generation_render.py /worker/scripts/example_generation_refine.py
+WORKDIR /worker/src
+
+# Plug your in-house generation stack in via environment-configured commands:
+# - GENERATION_RENDER_COMMAND
+# - GENERATION_REFINE_COMMAND
+# Optional legacy support can still be added by extending this image further.
+
+CMD ["python3", "-u", "handler.py"]
