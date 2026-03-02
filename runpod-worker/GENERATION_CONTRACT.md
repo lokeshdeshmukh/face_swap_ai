@@ -93,9 +93,8 @@ The initial self-hosted backend is intentionally narrow:
 - routes `full_body_reenactment` through its own wrapper and defaults to a dedicated MimicMotion-based backend command
 - includes a concrete LivePortrait-based reenactment backend entrypoint in-repo
 - includes a concrete MimicMotion-based full-body reenactment backend entrypoint in-repo
-- `Dockerfile.generation` installs the official LivePortrait runtime into `/opt/liveportrait` and exposes `/usr/local/bin/liveportrait`
+- `Dockerfile.generation` is intentionally slimmed for the production full-body path and does not bundle the portrait runtime
 - `Dockerfile.generation` installs the official MimicMotion runtime into `/opt/mimicmotion` and exposes `/usr/local/bin/mimicmotion`
-- LivePortrait weights are downloaded lazily on first use and should be cached on the mounted Runpod volume when available
 - MimicMotion weights are downloaded lazily on first use and should be cached on the mounted Runpod volume when available
 - uses CogVideoX image-to-video on Runpod GPU
 - can convert up to 4 identity images into one reference canvas for the model input

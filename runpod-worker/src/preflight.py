@@ -99,6 +99,18 @@ def _check_mimicmotion_runtime() -> List[str]:
     return errors
 
 
+def _portrait_backend_configured() -> bool:
+    backend_name = os.getenv("PORTRAIT_REENACTMENT_BACKEND", "").strip().lower()
+    backend_command = os.getenv("PORTRAIT_REENACTMENT_PIPELINE_COMMAND", "").strip()
+    return bool(backend_command) or (backend_name not in {"", "unconfigured"})
+
+
+def _full_body_backend_configured() -> bool:
+    backend_name = os.getenv("FULL_BODY_REENACTMENT_BACKEND", "").strip().lower()
+    backend_command = os.getenv("FULL_BODY_REENACTMENT_PIPELINE_COMMAND", "").strip()
+    return bool(backend_command) or (backend_name not in {"", "unconfigured"})
+
+
 def run_preflight() -> Dict[str, object]:
     errors: List[str] = []
     warnings: List[str] = []
@@ -111,31 +123,33 @@ def run_preflight() -> Dict[str, object]:
         errors.extend(_check_binaries(["ffmpeg"]))
         errors.extend(_check_torch_cuda())
         require_portrait_reenactment = _env_bool("REQUIRE_PORTRAIT_REENACTMENT_BACKEND", False)
-        portrait_reenactment_missing = _check_binaries(["liveportrait"])
-        portrait_reenactment_runtime = _check_liveportrait_runtime()
-        if portrait_reenactment_missing:
-            if require_portrait_reenactment:
-                errors.extend(portrait_reenactment_missing)
-            else:
-                warnings.extend(portrait_reenactment_missing)
-        if portrait_reenactment_runtime:
-            if require_portrait_reenactment:
-                errors.extend(portrait_reenactment_runtime)
-            else:
-                warnings.extend(portrait_reenactment_runtime)
+        if require_portrait_reenactment or _portrait_backend_configured():
+            portrait_reenactment_missing = _check_binaries(["liveportrait"])
+            portrait_reenactment_runtime = _check_liveportrait_runtime()
+            if portrait_reenactment_missing:
+                if require_portrait_reenactment:
+                    errors.extend(portrait_reenactment_missing)
+                else:
+                    warnings.extend(portrait_reenactment_missing)
+            if portrait_reenactment_runtime:
+                if require_portrait_reenactment:
+                    errors.extend(portrait_reenactment_runtime)
+                else:
+                    warnings.extend(portrait_reenactment_runtime)
         require_full_body_reenactment = _env_bool("REQUIRE_FULL_BODY_REENACTMENT_BACKEND", False)
-        full_body_missing = _check_binaries(["mimicmotion"])
-        full_body_runtime = _check_mimicmotion_runtime()
-        if full_body_missing:
-            if require_full_body_reenactment:
-                errors.extend(full_body_missing)
-            else:
-                warnings.extend(full_body_missing)
-        if full_body_runtime:
-            if require_full_body_reenactment:
-                errors.extend(full_body_runtime)
-            else:
-                warnings.extend(full_body_runtime)
+        if require_full_body_reenactment or _full_body_backend_configured():
+            full_body_missing = _check_binaries(["mimicmotion"])
+            full_body_runtime = _check_mimicmotion_runtime()
+            if full_body_missing:
+                if require_full_body_reenactment:
+                    errors.extend(full_body_missing)
+                else:
+                    warnings.extend(full_body_missing)
+            if full_body_runtime:
+                if require_full_body_reenactment:
+                    errors.extend(full_body_runtime)
+                else:
+                    warnings.extend(full_body_runtime)
     else:
         errors.extend(_check_python_modules(["requests", "runpod", "cv2", "onnxruntime", "scipy", "onnx"]))
         errors.extend(_check_binaries(["ffmpeg", "facefusion"]))
@@ -143,12 +157,13 @@ def run_preflight() -> Dict[str, object]:
         errors.extend(_check_onnxruntime_cuda_provider())
 
     require_photo_sing = _env_bool("REQUIRE_PHOTO_SING_DEPS", False)
-    photo_sing_missing = _check_binaries(["liveportrait", "musetalk"])
-    if photo_sing_missing:
-        if require_photo_sing:
-            errors.extend(photo_sing_missing)
-        else:
-            warnings.extend(photo_sing_missing)
+    if require_photo_sing or worker_pipeline_mode != "generation":
+        photo_sing_missing = _check_binaries(["liveportrait", "musetalk"])
+        if photo_sing_missing:
+            if require_photo_sing:
+                errors.extend(photo_sing_missing)
+            else:
+                warnings.extend(photo_sing_missing)
 
     require_4k = _env_bool("REQUIRE_4K_ENHANCER", False)
     enhance_missing = _check_binaries(["realesrgan-ncnn-vulkan"])

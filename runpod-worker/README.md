@@ -14,6 +14,8 @@ Generation-only worker image:
 docker build -f Dockerfile.generation -t truefaceswap-generation-worker .
 ```
 
+`Dockerfile.generation` is now optimized for the production `Full Body Reenactment` path. It intentionally omits the portrait runtime to keep build time and image size under control.
+
 Concrete generation contract:
 
 - `GENERATION_CONTRACT.md`
@@ -47,18 +49,14 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
 - To plug in a real in-house generation stack, implement the adapter CLI in `GENERATION_CONTRACT.md`.
 - Default generation backend in this repo:
   - portrait reenactment render: `python3 /worker/src/generation_render_reenactment.py`
-  - portrait reenactment pipeline: `python3 /worker/src/portrait_reenactment_liveportrait.py`
+  - portrait reenactment pipeline: not bundled in `Dockerfile.generation`
   - full body reenactment render: `python3 /worker/src/generation_render_full_body_reenactment.py`
   - full body reenactment pipeline: `python3 /worker/src/full_body_reenactment_mimicmotion.py`
   - render: `python3 /worker/src/generation_render_cogvideox.py`
   - refine: `python3 /worker/src/generation_refine_basic.py`
 - Portrait reenactment requires a dedicated in-repo model runner:
-  - default: `PORTRAIT_REENACTMENT_PIPELINE_COMMAND="python3 /worker/src/portrait_reenactment_liveportrait.py"`
-  - `Dockerfile.generation` installs the official LivePortrait repo under `/opt/liveportrait`
-  - the worker exposes `/usr/local/bin/liveportrait` as a wrapper binary
-  - first request downloads LivePortrait weights into the persistent cache at `/runpod-volume/truefaceswap-cache/liveportrait/pretrained_weights` when a Runpod volume is attached
-  - if no volume is attached, weights fall back to `/opt/liveportrait/pretrained_weights`
-  - to fail fast at boot, set `REQUIRE_PORTRAIT_REENACTMENT_BACKEND=true`
+  - this lean image leaves `PORTRAIT_REENACTMENT_PIPELINE_COMMAND` unset
+  - portrait mode will fail cleanly on this endpoint unless you supply a separate portrait backend image/runtime
 - Full Body Reenactment is a separate product path:
   - default render wrapper: `FULL_BODY_REENACTMENT_RENDER_COMMAND="python3 /worker/src/generation_render_full_body_reenactment.py"`
   - default pipeline backend: `FULL_BODY_REENACTMENT_PIPELINE_COMMAND="python3 /worker/src/full_body_reenactment_mimicmotion.py"`
@@ -66,7 +64,7 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - the worker exposes `/usr/local/bin/mimicmotion` as a wrapper binary
   - first request downloads MimicMotion weights into `/runpod-volume/truefaceswap-cache/mimicmotion/checkpoints` when a Runpod volume is attached
   - if no volume is attached, weights fall back to `/opt/mimicmotion/models/checkpoints`
-  - to fail fast at boot, set `REQUIRE_FULL_BODY_REENACTMENT_BACKEND=true`
+  - this image sets `REQUIRE_FULL_BODY_REENACTMENT_BACKEND=true` by default
 - Default model:
   - `GENERATION_MODEL_ID=THUDM/CogVideoX-5b-I2V`
 - Preferred split for staged pipelines:
@@ -129,7 +127,7 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - Generation mode required: `ffmpeg`, Python modules `requests`, `runpod`, `torch`, `diffusers`, `transformers`, `accelerate`, `PIL`, plus CUDA available in `torch`.
   - Legacy mode required: `ffmpeg`, `facefusion`, Python modules `requests`, `runpod`, `cv2`, `onnxruntime`, `onnx`, `scipy`.
   - Optional-by-default: `liveportrait`, `musetalk`, `realesrgan-ncnn-vulkan`.
-  - Optional-by-default in generation mode: `mimicmotion` unless `REQUIRE_FULL_BODY_REENACTMENT_BACKEND=true`.
+  - Full-body backend is mandatory in this image: `mimicmotion`.
 - Runtime download provider can be controlled with:
   - `FACEFUSION_DOWNLOAD_PROVIDERS="huggingface github"` (default)
   - Worker retries once with `github` automatically if model source validation fails.

@@ -2,24 +2,16 @@ FROM runpod/base:0.4.1-cuda12.1.0
 
 WORKDIR /worker
 
-ARG LIVEPORTRAIT_REF=main
 ARG MIMICMOTION_REF=main
 
 ENV WORKER_PIPELINE_MODE=generation
 ENV PYTHONPATH=/worker/src
 ENV PORTRAIT_REENACTMENT_RENDER_COMMAND="python3 /worker/src/generation_render_reenactment.py"
-ENV PORTRAIT_REENACTMENT_PIPELINE_COMMAND="python3 /worker/src/portrait_reenactment_liveportrait.py"
-ENV PORTRAIT_REENACTMENT_BACKEND="liveportrait_cli"
+ENV PORTRAIT_REENACTMENT_PIPELINE_COMMAND=""
+ENV PORTRAIT_REENACTMENT_BACKEND="unconfigured"
 ENV FULL_BODY_REENACTMENT_RENDER_COMMAND="python3 /worker/src/generation_render_full_body_reenactment.py"
 ENV FULL_BODY_REENACTMENT_PIPELINE_COMMAND="python3 /worker/src/full_body_reenactment_mimicmotion.py"
 ENV FULL_BODY_REENACTMENT_BACKEND="mimicmotion_cli"
-ENV LIVEPORTRAIT_REPO_DIR=/opt/liveportrait
-ENV LIVEPORTRAIT_VENV_BIN=/opt/liveportrait-venv/bin
-ENV LIVEPORTRAIT_HF_REPO=KlingTeam/LivePortrait
-ENV LIVEPORTRAIT_AUTO_CROP=true
-ENV LIVEPORTRAIT_AUDIO_PRIORITY=driving
-ENV LIVEPORTRAIT_DRIVING_OPTION=expression-friendly
-ENV LIVEPORTRAIT_ANIMATION_REGION=all
 ENV MIMICMOTION_REPO_DIR=/opt/mimicmotion
 ENV MIMICMOTION_VENV_BIN=/opt/mimicmotion-venv/bin
 ENV MIMICMOTION_HF_REPO=Tencent/MimicMotion
@@ -31,6 +23,7 @@ ENV MIMICMOTION_GUIDANCE_SCALE=2.2
 ENV MIMICMOTION_NOISE_AUG_STRENGTH=0.0
 ENV MIMICMOTION_FRAMES_OVERLAP=6
 ENV MIMICMOTION_RESOLUTION=576
+ENV REQUIRE_FULL_BODY_REENACTMENT_BACKEND=true
 ENV GENERATION_RENDER_COMMAND="python3 /worker/src/generation_render_cogvideox.py"
 ENV GENERATION_REFINE_COMMAND="python3 /worker/src/generation_refine_basic.py"
 ENV GENERATION_MODEL_ID="THUDM/CogVideoX-5b-I2V"
@@ -51,15 +44,6 @@ RUN set -eux; \
     python3 -m pip install --no-cache-dir -r /worker/requirements.txt; \
     python3 -m pip install --no-cache-dir -r /worker/requirements.generation.txt; \
     python3 -c "import requests, runpod, torch, diffusers, transformers, accelerate, PIL; print('deps-ok')"; \
-    git clone --depth 1 --branch "${LIVEPORTRAIT_REF}" https://github.com/KlingAIResearch/LivePortrait.git "${LIVEPORTRAIT_REPO_DIR}"; \
-    python3 -m venv /opt/liveportrait-venv; \
-    "${LIVEPORTRAIT_VENV_BIN}/python" -m pip install --no-cache-dir --upgrade pip setuptools wheel; \
-    "${LIVEPORTRAIT_VENV_BIN}/python" -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu121 torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0; \
-    "${LIVEPORTRAIT_VENV_BIN}/python" -m pip install --no-cache-dir -r "${LIVEPORTRAIT_REPO_DIR}/requirements.txt"; \
-    "${LIVEPORTRAIT_VENV_BIN}/python" -m pip install --no-cache-dir "huggingface_hub[cli]"; \
-    "${LIVEPORTRAIT_VENV_BIN}/python" -c "import cv2, torch; print('liveportrait-deps-ok', torch.cuda.is_available())"; \
-    test -f "${LIVEPORTRAIT_REPO_DIR}/inference.py"; \
-    test -x "${LIVEPORTRAIT_VENV_BIN}/python"; \
     git clone --depth 1 --branch "${MIMICMOTION_REF}" https://github.com/Tencent/MimicMotion.git "${MIMICMOTION_REPO_DIR}"; \
     python3 -m venv /opt/mimicmotion-venv; \
     "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir --upgrade pip setuptools wheel; \
@@ -73,13 +57,10 @@ RUN set -eux; \
 COPY src /worker/src
 COPY scripts /worker/scripts
 RUN set -eux; \
-    printf '#!/usr/bin/env bash\nexec python3 /worker/src/liveportrait_cli.py "$@"\n' > /usr/local/bin/liveportrait; \
     printf '#!/usr/bin/env bash\nexec python3 /worker/src/mimicmotion_cli.py "$@"\n' > /usr/local/bin/mimicmotion; \
-    chmod +x /usr/local/bin/liveportrait; \
     chmod +x /usr/local/bin/mimicmotion; \
     chmod +x /worker/scripts/example_generation_render.py /worker/scripts/example_generation_refine.py; \
     chmod +x /worker/src/generation_render_cogvideox.py /worker/src/generation_render_reenactment.py /worker/src/generation_render_full_body_reenactment.py /worker/src/portrait_reenactment_liveportrait.py /worker/src/full_body_reenactment_mimicmotion.py /worker/src/generation_refine_basic.py /worker/src/liveportrait_cli.py /worker/src/mimicmotion_cli.py; \
-    liveportrait --help >/dev/null; \
     mimicmotion --help >/dev/null
 WORKDIR /worker/src
 
