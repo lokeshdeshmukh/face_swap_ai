@@ -49,6 +49,7 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - portrait reenactment render: `python3 /worker/src/generation_render_reenactment.py`
   - portrait reenactment pipeline: `python3 /worker/src/portrait_reenactment_liveportrait.py`
   - full body reenactment render: `python3 /worker/src/generation_render_full_body_reenactment.py`
+  - full body reenactment pipeline: `python3 /worker/src/full_body_reenactment_mimicmotion.py`
   - render: `python3 /worker/src/generation_render_cogvideox.py`
   - refine: `python3 /worker/src/generation_refine_basic.py`
 - Portrait reenactment requires a dedicated in-repo model runner:
@@ -60,8 +61,12 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - to fail fast at boot, set `REQUIRE_PORTRAIT_REENACTMENT_BACKEND=true`
 - Full Body Reenactment is a separate product path:
   - default render wrapper: `FULL_BODY_REENACTMENT_RENDER_COMMAND="python3 /worker/src/generation_render_full_body_reenactment.py"`
-  - you must provide a real backend with `FULL_BODY_REENACTMENT_PIPELINE_COMMAND`
-  - there is intentionally no fake fallback to the portrait backend
+  - default pipeline backend: `FULL_BODY_REENACTMENT_PIPELINE_COMMAND="python3 /worker/src/full_body_reenactment_mimicmotion.py"`
+  - `Dockerfile.generation` installs the official MimicMotion repo under `/opt/mimicmotion`
+  - the worker exposes `/usr/local/bin/mimicmotion` as a wrapper binary
+  - first request downloads MimicMotion weights into `/runpod-volume/truefaceswap-cache/mimicmotion/checkpoints` when a Runpod volume is attached
+  - if no volume is attached, weights fall back to `/opt/mimicmotion/models/checkpoints`
+  - to fail fast at boot, set `REQUIRE_FULL_BODY_REENACTMENT_BACKEND=true`
 - Default model:
   - `GENERATION_MODEL_ID=THUDM/CogVideoX-5b-I2V`
 - Preferred split for staged pipelines:
@@ -89,6 +94,17 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - `LIVEPORTRAIT_AUDIO_PRIORITY`
   - `LIVEPORTRAIT_DRIVING_OPTION`
   - `LIVEPORTRAIT_ANIMATION_REGION`
+  - `MIMICMOTION_REF` (Docker build arg, default `main`)
+  - `MIMICMOTION_HF_REPO`
+  - `MIMICMOTION_CKPT_NAME`
+  - `MIMICMOTION_WEIGHTS_DIR`
+  - `MIMICMOTION_BASE_MODEL`
+  - `MIMICMOTION_SAMPLE_STRIDE`
+  - `MIMICMOTION_NUM_INFERENCE_STEPS`
+  - `MIMICMOTION_GUIDANCE_SCALE`
+  - `MIMICMOTION_NOISE_AUG_STRENGTH`
+  - `MIMICMOTION_FRAMES_OVERLAP`
+  - `MIMICMOTION_RESOLUTION`
   - `GENERATION_MODEL_ID`
   - `GENERATION_MODEL_DTYPE=auto|bf16|fp16`
   - `GENERATION_OFFLOAD_MODE=model|sequential|none`
@@ -113,6 +129,7 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - Generation mode required: `ffmpeg`, Python modules `requests`, `runpod`, `torch`, `diffusers`, `transformers`, `accelerate`, `PIL`, plus CUDA available in `torch`.
   - Legacy mode required: `ffmpeg`, `facefusion`, Python modules `requests`, `runpod`, `cv2`, `onnxruntime`, `onnx`, `scipy`.
   - Optional-by-default: `liveportrait`, `musetalk`, `realesrgan-ncnn-vulkan`.
+  - Optional-by-default in generation mode: `mimicmotion` unless `REQUIRE_FULL_BODY_REENACTMENT_BACKEND=true`.
 - Runtime download provider can be controlled with:
   - `FACEFUSION_DOWNLOAD_PROVIDERS="huggingface github"` (default)
   - Worker retries once with `github` automatically if model source validation fails.

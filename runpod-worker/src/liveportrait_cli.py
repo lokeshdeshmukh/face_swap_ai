@@ -55,12 +55,13 @@ def _ensure_weights(repo_dir: Path, venv_bin_dir: Path) -> Path:
         )
 
     target_link = repo_dir / "pretrained_weights"
-    if target_link.is_symlink() or target_link.exists():
-        if target_link.is_symlink() or target_link.is_file():
-            target_link.unlink()
-        else:
-            shutil.rmtree(target_link)
-    target_link.symlink_to(weights_dir, target_is_directory=True)
+    if weights_dir != target_link:
+        if target_link.is_symlink() or target_link.exists():
+            if target_link.is_symlink() or target_link.is_file():
+                target_link.unlink()
+            else:
+                shutil.rmtree(target_link)
+        target_link.symlink_to(weights_dir, target_is_directory=True)
     return weights_dir
 
 

@@ -85,6 +85,20 @@ def _check_liveportrait_runtime() -> List[str]:
     return errors
 
 
+def _check_mimicmotion_runtime() -> List[str]:
+    repo_dir = Path(os.getenv("MIMICMOTION_REPO_DIR", "/opt/mimicmotion"))
+    venv_bin_dir = Path(os.getenv("MIMICMOTION_VENV_BIN", "/opt/mimicmotion-venv/bin"))
+
+    errors: List[str] = []
+    if not (repo_dir / "inference.py").exists():
+        errors.append(f"mimicmotion inference script not found at {repo_dir / 'inference.py'}")
+    if not (venv_bin_dir / "python").exists():
+        errors.append(f"mimicmotion python runtime not found at {venv_bin_dir / 'python'}")
+    if not (venv_bin_dir / "huggingface-cli").exists():
+        errors.append(f"mimicmotion huggingface-cli not found at {venv_bin_dir / 'huggingface-cli'}")
+    return errors
+
+
 def run_preflight() -> Dict[str, object]:
     errors: List[str] = []
     warnings: List[str] = []
@@ -109,6 +123,19 @@ def run_preflight() -> Dict[str, object]:
                 errors.extend(portrait_reenactment_runtime)
             else:
                 warnings.extend(portrait_reenactment_runtime)
+        require_full_body_reenactment = _env_bool("REQUIRE_FULL_BODY_REENACTMENT_BACKEND", False)
+        full_body_missing = _check_binaries(["mimicmotion"])
+        full_body_runtime = _check_mimicmotion_runtime()
+        if full_body_missing:
+            if require_full_body_reenactment:
+                errors.extend(full_body_missing)
+            else:
+                warnings.extend(full_body_missing)
+        if full_body_runtime:
+            if require_full_body_reenactment:
+                errors.extend(full_body_runtime)
+            else:
+                warnings.extend(full_body_runtime)
     else:
         errors.extend(_check_python_modules(["requests", "runpod", "cv2", "onnxruntime", "scipy", "onnx"]))
         errors.extend(_check_binaries(["ffmpeg", "facefusion"]))

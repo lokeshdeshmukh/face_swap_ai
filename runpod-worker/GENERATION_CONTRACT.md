@@ -7,6 +7,7 @@ Current first real backend in this repo:
 - portrait reenactment wrapper: `/worker/src/generation_render_reenactment.py`
 - full body reenactment wrapper: `/worker/src/generation_render_full_body_reenactment.py`
 - portrait reenactment backend: `/worker/src/portrait_reenactment_liveportrait.py`
+- full body reenactment backend: `/worker/src/full_body_reenactment_mimicmotion.py`
 - render: `/worker/src/generation_render_cogvideox.py`
 - refine: `/worker/src/generation_refine_basic.py`
 
@@ -89,10 +90,13 @@ The initial self-hosted backend is intentionally narrow:
 - supports `portrait_reenactment` as a first-class worker task
 - supports `full_body_reenactment` as a separate first-class worker task with its own render wrapper
 - routes `portrait_reenactment` through a dedicated wrapper backend instead of the generic CogVideoX adapter
-- routes `full_body_reenactment` through its own wrapper and requires a dedicated body-motion backend command
+- routes `full_body_reenactment` through its own wrapper and defaults to a dedicated MimicMotion-based backend command
 - includes a concrete LivePortrait-based reenactment backend entrypoint in-repo
+- includes a concrete MimicMotion-based full-body reenactment backend entrypoint in-repo
 - `Dockerfile.generation` installs the official LivePortrait runtime into `/opt/liveportrait` and exposes `/usr/local/bin/liveportrait`
+- `Dockerfile.generation` installs the official MimicMotion runtime into `/opt/mimicmotion` and exposes `/usr/local/bin/mimicmotion`
 - LivePortrait weights are downloaded lazily on first use and should be cached on the mounted Runpod volume when available
+- MimicMotion weights are downloaded lazily on first use and should be cached on the mounted Runpod volume when available
 - uses CogVideoX image-to-video on Runpod GPU
 - can convert up to 4 identity images into one reference canvas for the model input
 - can be forced back to one image with `GENERATION_MULTI_IMAGE_MODE=primary_only`
