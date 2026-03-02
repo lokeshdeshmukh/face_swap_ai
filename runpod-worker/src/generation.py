@@ -12,6 +12,7 @@ from typing import Callable, List, Optional
 from generation_contract import (
     CONTRACT_VERSION,
     AdapterReport,
+    ControlBundle,
     ContractError,
     IdentityImage,
     IdentityPack,
@@ -19,9 +20,11 @@ from generation_contract import (
     ShotPlan,
     ensure_video_output,
     load_adapter_report,
+    load_control_bundle,
     load_identity_pack,
     load_shot_plan,
     save_adapter_report,
+    save_control_bundle,
     save_identity_pack,
     save_shot_plan,
 )
@@ -310,6 +313,61 @@ def analyze_motion_reference_video(motion_reference_video: Optional[Path], outpu
     }
 
 
+def build_control_bundle(
+    driving_video: Optional[Path],
+    output_dir: Path,
+    progress: Optional[ProgressCallback] = None,
+) -> Path | None:
+    if not driving_video or not driving_video.exists():
+        return None
+
+    metadata = _probe_video_metadata(driving_video)
+    max_frames = int(os.getenv("GENERATION_MOTION_REFERENCE_MAX_FRAMES", "16"))
+    sample_fps = float(os.getenv("GENERATION_MOTION_REFERENCE_SAMPLE_FPS", "2.0"))
+    frame_dir = output_dir / "control_frames"
+    extracted = _extract_motion_reference_frames(
+        driving_video,
+        frame_dir,
+        max_frames=max_frames,
+        fps=sample_fps,
+    )
+    if not extracted:
+        raise GenerationError("no control frames could be extracted from driving video")
+
+    motion_profile = analyze_motion_reference_video(driving_video, output_dir)
+    if progress:
+        progress(
+            "control_extract",
+            {
+                "sampled_frames": len(extracted),
+                "sample_fps": sample_fps,
+                "motion_type": motion_profile.get("motion_type") if motion_profile else None,
+            },
+        )
+
+    bundle_path = output_dir / "control_bundle.json"
+    bundle = ControlBundle(
+        version=CONTRACT_VERSION,
+        driving_video=str(driving_video),
+        frame_dir=str(frame_dir),
+        sampled_frames=len(extracted),
+        sample_fps=sample_fps,
+        duration_seconds=metadata.get("duration_seconds"),
+        source_fps=metadata.get("source_fps"),
+        motion_type=str(motion_profile.get("motion_type")) if motion_profile and motion_profile.get("motion_type") else None,
+        motion_summary=(
+            str(motion_profile.get("motion_summary"))
+            if motion_profile and motion_profile.get("motion_summary")
+            else None
+        ),
+    )
+    try:
+        save_control_bundle(bundle_path, bundle)
+    except ContractError as exc:
+        raise GenerationError(str(exc)) from exc
+    return bundle_path
+
+
 def augment_identity_images(
     source_images: List[Path],
     identity_video: Optional[Path],
@@ -383,6 +441,8 @@ def build_identity_pack(
 
 def build_shot_plan(
     identity_pack_path: Path,
+    task_type: str,
+    control_bundle_path: Optional[Path],
     motion_reference_video: Optional[Path],
     driving_audio: Optional[Path],
     output_dir: Path,
@@ -392,12 +452,16 @@ def build_shot_plan(
     progress: Optional[ProgressCallback] = None,
 ) -> Path:
     motion_reference_profile = analyze_motion_reference_video(motion_reference_video, output_dir)
+    control_bundle = load_control_bundle(control_bundle_path) if control_bundle_path else None
     if progress:
         metadata = {
+            "task_type": task_type,
             "motion_preset": job_config.get("motion_preset"),
             "style_preset": job_config.get("style_preset"),
             "duration_seconds": job_config.get("duration_seconds"),
         }
+        if control_bundle:
+            metadata["control_frames"] = control_bundle.sampled_frames
         if motion_reference_profile:
             metadata["motion_type"] = motion_reference_profile.get("motion_type")
             metadata["motion_summary"] = motion_reference_profile.get("motion_summary")
@@ -410,7 +474,11 @@ def build_shot_plan(
     fps = 24 if quality == "max" else 20
     plan = ShotPlan(
         version=CONTRACT_VERSION,
+        task_type=task_type,
         identity_pack_path=str(identity_pack_path),
+        control_bundle_path=(
+            str(control_bundle_path) if control_bundle_path and control_bundle_path.exists() else None
+        ),
         prompt=str(job_config.get("prompt") or ""),
         negative_prompt=str(job_config["negative_prompt"]) if job_config.get("negative_prompt") else None,
         motion_preset=str(job_config["motion_preset"]) if job_config.get("motion_preset") else None,
@@ -489,25 +557,32 @@ def render_generation(
     if progress:
         progress("generating", None)
 
-    render_command = os.getenv("GENERATION_RENDER_COMMAND", "").strip() or os.getenv(
-        "GENERATION_PIPELINE_COMMAND", ""
-    ).strip()
+    shot_plan = load_shot_plan(shot_plan_path)
+    if shot_plan.task_type == "portrait_reenactment":
+        render_command = os.getenv("PORTRAIT_REENACTMENT_RENDER_COMMAND", "").strip() or (
+            "python3 /worker/src/generation_render_reenactment.py"
+        )
+    else:
+        render_command = os.getenv("GENERATION_RENDER_COMMAND", "").strip() or os.getenv(
+            "GENERATION_PIPELINE_COMMAND", ""
+        ).strip() or "python3 /worker/src/generation_render_cogvideox.py"
     report_path = output_video.with_suffix(".render-report.json")
     if render_command:
-        cmd = [
-            *shlex.split(render_command),
-            "--shot-plan",
-            str(shot_plan_path),
-            "--output",
-            str(output_video),
-            "--report",
-            str(report_path),
-        ]
+        cmd = [*shlex.split(render_command), "--shot-plan", str(shot_plan_path), "--output", str(output_video)]
+        if shot_plan.identity_pack_path:
+            cmd.extend(["--identity-pack", str(shot_plan.identity_pack_path)])
+        if shot_plan.control_bundle_path:
+            cmd.extend(["--control-bundle", str(shot_plan.control_bundle_path)])
+        cmd.extend(["--report", str(report_path)])
         try:
             _run(cmd)
         except GenerationError as exc:
             if "--report" in str(exc):
                 fallback_cmd = [*shlex.split(render_command), "--shot-plan", str(shot_plan_path), "--output", str(output_video)]
+                if shot_plan.identity_pack_path:
+                    fallback_cmd.extend(["--identity-pack", str(shot_plan.identity_pack_path)])
+                if shot_plan.control_bundle_path:
+                    fallback_cmd.extend(["--control-bundle", str(shot_plan.control_bundle_path)])
                 _run(fallback_cmd)
             else:
                 raise

@@ -40,13 +40,17 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
 
 - This template assumes model CLIs are present in the image.
 - For production-sized outputs, replace `output_base64` with object-storage upload and return an `output_url`.
-- Generation-first modes (`ai_video_generate`, `photo_to_video`) accept a `job_config` payload.
+- Generation pipeline modes (`portrait_reenactment`, `ai_video_generate`, `photo_to_video`) accept a `job_config` payload.
 - Generation workers can use `Dockerfile.generation` with `WORKER_PIPELINE_MODE=generation`.
 - Contract parsing/validation lives in `/worker/src/generation_contract.py`.
+- Driving-video reenactment now extracts a `control_bundle.json` before render.
 - To plug in a real in-house generation stack, implement the adapter CLI in `GENERATION_CONTRACT.md`.
 - Default generation backend in this repo:
+  - portrait reenactment render: `python3 /worker/src/generation_render_reenactment.py`
   - render: `python3 /worker/src/generation_render_cogvideox.py`
   - refine: `python3 /worker/src/generation_refine_basic.py`
+- Portrait reenactment requires a dedicated in-repo model runner:
+  - set `PORTRAIT_REENACTMENT_PIPELINE_COMMAND` to your actual reenactment backend entrypoint
 - Default model:
   - `GENERATION_MODEL_ID=THUDM/CogVideoX-5b-I2V`
 - Preferred split for staged pipelines:
@@ -77,6 +81,10 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - `GENERATION_IDENTITY_VIDEO_KEEP_FRAMES`
   - `GENERATION_MOTION_REFERENCE_MAX_FRAMES`
   - `GENERATION_MOTION_REFERENCE_SAMPLE_FPS`
+  - `GENERATION_MOTION_CONDITIONING_MODE=prompt_only|direct_warp`
+  - `GENERATION_MOTION_WARP_SCALE` (`direct_warp` experimental only)
+  - `GENERATION_MOTION_WARP_STABILIZATION` (`direct_warp` experimental only)
+  - `GENERATION_MOTION_WARP_SMOOTHING` (`direct_warp` experimental only)
   - `GENERATION_NUM_INFERENCE_STEPS`
   - `GENERATION_NUM_FRAMES`
   - `GENERATION_OUTPUT_FPS`

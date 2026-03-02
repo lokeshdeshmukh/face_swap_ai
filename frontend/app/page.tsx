@@ -4,14 +4,14 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { apiBase, type JobStatus } from "../lib/api";
 
-type Mode = "ai_video_generate" | "photo_to_video" | "video_swap" | "photo_sing";
+type Mode = "portrait_reenactment" | "ai_video_generate" | "photo_to_video" | "video_swap" | "photo_sing";
 type Quality = "fast" | "balanced" | "max";
 type AspectRatio = "9:16" | "1:1" | "4:5";
 
-const GENERATION_MODES: Mode[] = ["ai_video_generate", "photo_to_video"];
+const GENERATION_MODES: Mode[] = ["portrait_reenactment", "ai_video_generate", "photo_to_video"];
 
 export default function HomePage() {
-  const [mode, setMode] = useState<Mode>("ai_video_generate");
+  const [mode, setMode] = useState<Mode>("portrait_reenactment");
   const [quality, setQuality] = useState<Quality>("balanced");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   const [enable4k, setEnable4k] = useState(false);
@@ -34,7 +34,8 @@ export default function HomePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isGenerationMode = GENERATION_MODES.includes(mode);
-  const needsReferenceVideo = !isGenerationMode;
+  const isReenactmentMode = mode === "portrait_reenactment";
+  const needsReferenceVideo = !isGenerationMode || isReenactmentMode;
 
   const pollEnabled = useMemo(
     () => Boolean(jobId && job?.status !== "done" && job?.status !== "failed"),
@@ -87,10 +88,10 @@ export default function HomePage() {
       return;
     }
     if (needsReferenceVideo && !referenceVideo) {
-      setError("Reference video is required for legacy modes.");
+      setError(isReenactmentMode ? "Driving video is required for portrait reenactment." : "Reference video is required for legacy modes.");
       return;
     }
-    if (isGenerationMode && !prompt.trim()) {
+    if (mode === "ai_video_generate" && !prompt.trim()) {
       setError("Prompt is required for generation modes.");
       return;
     }
@@ -134,8 +135,8 @@ export default function HomePage() {
     <main>
       <h1>TrueFaceSwapVideo</h1>
       <p className="muted">
-        Generation-first workflow for in-house identity video pipelines. Legacy face-swap modes remain available
-        for compatibility.
+        Reenactment-first workflow for in-house identity video pipelines. Legacy face-swap modes remain available for
+        compatibility.
       </p>
 
       <form className="card" onSubmit={onSubmit}>
@@ -143,8 +144,9 @@ export default function HomePage() {
           <div>
             <label htmlFor="mode">Mode</label>
             <select id="mode" value={mode} onChange={(e) => setMode(e.target.value as Mode)}>
-              <option value="ai_video_generate">AI Video Generation</option>
-              <option value="photo_to_video">Photo to Video</option>
+              <option value="portrait_reenactment">Portrait Reenactment</option>
+              <option value="ai_video_generate">AI Video Generation (Experimental)</option>
+              <option value="photo_to_video">Photo to Video (Experimental)</option>
               <option value="video_swap">Legacy Face Swap</option>
               <option value="photo_sing">Legacy Photo Sing</option>
             </select>
@@ -185,7 +187,17 @@ export default function HomePage() {
           <div className="grid" style={{ marginTop: 12 }}>
             <div>
               <label htmlFor="prompt">Prompt</label>
-              <textarea id="prompt" rows={4} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+              <textarea
+                id="prompt"
+                rows={4}
+                value={prompt}
+                placeholder={
+                  isReenactmentMode
+                    ? "Optional look/style notes, e.g. premium studio realism, clean skin texture, natural lighting"
+                    : ""
+                }
+                onChange={(e) => setPrompt(e.target.value)}
+              />
             </div>
 
             <div>
@@ -199,7 +211,7 @@ export default function HomePage() {
             </div>
 
             <div>
-              <label htmlFor="motionPreset">Motion Preset</label>
+              <label htmlFor="motionPreset">{isReenactmentMode ? "Motion Bias" : "Motion Preset"}</label>
               <input id="motionPreset" value={motionPreset} onChange={(e) => setMotionPreset(e.target.value)} />
             </div>
 
@@ -255,17 +267,22 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div>
-            <label htmlFor="reference">
-              {isGenerationMode ? "Motion Reference Video (optional)" : "Reference Video"}
-            </label>
-            <input
-              id="reference"
-              type="file"
-              accept="video/*"
-              onChange={(e) => setReferenceVideo(e.target.files?.[0] ?? null)}
-            />
-          </div>
+            <div>
+              <label htmlFor="reference">{isReenactmentMode ? "Driving Video" : isGenerationMode ? "Motion Reference Video (optional)" : "Reference Video"}</label>
+              <input
+                id="reference"
+                type="file"
+                accept="video/*"
+                onChange={(e) => setReferenceVideo(e.target.files?.[0] ?? null)}
+              />
+              <p className="muted" style={{ marginTop: 6 }}>
+                {referenceVideo
+                  ? referenceVideo.name
+                  : isReenactmentMode
+                    ? "Upload the performer video whose motion and expressions should drive the identity."
+                    : "No reference video selected"}
+              </p>
+            </div>
 
           <div>
             <label htmlFor="audio">

@@ -44,6 +44,13 @@ def _env_optional_int(name: str) -> int | None:
     return int(raw)
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _run(cmd: list[str]) -> None:
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -93,6 +100,115 @@ def _compose_motion_reference_phrase(profile: dict[str, object] | None) -> str |
     if motion_summary:
         return f"camera movement should follow this reference behavior: {motion_summary}"
     return None
+
+
+def _extract_conditioning_frames(
+    video_path: str,
+    output_dir: Path,
+    fps: int,
+    frame_limit: int,
+    width: int,
+    height: int,
+) -> list[Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pattern = output_dir / "cond_%03d.png"
+    vf = f"fps={fps},scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}"
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        video_path,
+        "-vf",
+        vf,
+        "-frames:v",
+        str(frame_limit),
+        str(pattern),
+    ]
+    _run(cmd)
+    return sorted(output_dir.glob("cond_*.png"))
+
+
+def _dense_flow_motion_transfer(
+    anchor_frame,
+    motion_reference_video: str,
+    width: int,
+    height: int,
+    fps: int,
+    frame_limit: int,
+) -> tuple[list, dict[str, float | int | str]]:
+    import cv2
+    import numpy as np
+    from PIL import Image
+
+    motion_scale = _env_float("GENERATION_MOTION_WARP_SCALE", 1.0)
+    stabilization = _env_float("GENERATION_MOTION_WARP_STABILIZATION", 0.08)
+    smoothing = _env_int("GENERATION_MOTION_WARP_SMOOTHING", 7)
+
+    with tempfile.TemporaryDirectory(prefix="motion-conditioning-") as temp_dir:
+        temp_path = Path(temp_dir)
+        ref_frames = _extract_conditioning_frames(
+            motion_reference_video,
+            temp_path,
+            fps=fps,
+            frame_limit=frame_limit,
+            width=width,
+            height=height,
+        )
+        if len(ref_frames) < 2:
+            raise SystemExit("motion conditioning requires at least 2 extracted reference frames")
+
+        anchor_rgb = np.array(anchor_frame.convert("RGB"))
+        synthetic_prev = cv2.cvtColor(anchor_rgb, cv2.COLOR_RGB2BGR)
+        output_frames = [anchor_rgb]
+
+        prev_ref = cv2.imread(str(ref_frames[0]), cv2.IMREAD_GRAYSCALE)
+        if prev_ref is None:
+            raise SystemExit("failed to read first motion conditioning frame")
+
+        h, w = prev_ref.shape[:2]
+        grid_x, grid_y = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
+
+        for ref_path in ref_frames[1:]:
+            current_ref = cv2.imread(str(ref_path), cv2.IMREAD_GRAYSCALE)
+            if current_ref is None:
+                continue
+            flow = cv2.calcOpticalFlowFarneback(
+                prev_ref,
+                current_ref,
+                None,
+                pyr_scale=0.5,
+                levels=3,
+                winsize=21,
+                iterations=3,
+                poly_n=5,
+                poly_sigma=1.2,
+                flags=0,
+            )
+            if smoothing > 1:
+                flow = cv2.GaussianBlur(flow, (smoothing | 1, smoothing | 1), 0)
+
+            effective_scale = max(0.0, motion_scale * (1.0 - stabilization))
+            map_x = grid_x - (flow[..., 0] * effective_scale)
+            map_y = grid_y - (flow[..., 1] * effective_scale)
+
+            warped = cv2.remap(
+                synthetic_prev,
+                map_x,
+                map_y,
+                interpolation=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_REFLECT101,
+            )
+            synthetic_prev = warped
+            output_frames.append(cv2.cvtColor(warped, cv2.COLOR_BGR2RGB))
+            prev_ref = current_ref
+
+        pil_frames = [Image.fromarray(frame) for frame in output_frames]
+        return pil_frames, {
+            "motion_conditioning_mode": "direct_warp",
+            "motion_conditioning_frames": len(pil_frames),
+            "motion_warp_scale": motion_scale,
+            "motion_warp_stabilization": stabilization,
+        }
 
 
 def _target_base_size(aspect_ratio: str) -> tuple[int, int]:
@@ -235,6 +351,7 @@ def main() -> None:
         CONTRACT_VERSION,
         AdapterReport,
         ensure_video_output,
+        load_control_bundle,
         load_identity_pack,
         load_shot_plan,
         save_adapter_report,
@@ -245,6 +362,7 @@ def main() -> None:
 
     shot_plan = load_shot_plan(Path(args.shot_plan))
     identity_pack = load_identity_pack(Path(shot_plan.identity_pack_path))
+    control_bundle = load_control_bundle(Path(shot_plan.control_bundle_path)) if shot_plan.control_bundle_path else None
 
     model_id = os.getenv("GENERATION_MODEL_ID", "THUDM/CogVideoX-5b-I2V").strip()
     dtype_name = os.getenv("GENERATION_MODEL_DTYPE", "auto").strip().lower()
@@ -257,6 +375,7 @@ def main() -> None:
 
     offload_mode = os.getenv("GENERATION_OFFLOAD_MODE", "model").strip().lower()
     guidance_scale = _env_float("GENERATION_GUIDANCE_SCALE", 6.0)
+    motion_conditioning_mode = _env_str("GENERATION_MOTION_CONDITIONING_MODE", "prompt_only").lower()
 
     quality_defaults = {
         "fast": {"steps": 20, "frames": 33},
@@ -307,6 +426,33 @@ def main() -> None:
             generator=generator,
         ).frames[0]
 
+    motion_conditioning_metrics: dict[str, float | int | str] = {"motion_conditioning_mode": "prompt_only"}
+    warnings: list[str] = []
+    if shot_plan.motion_reference_video and motion_conditioning_mode == "direct_warp":
+        try:
+            anchor_frame = frames[0] if frames else prepared_image
+            frames, motion_conditioning_metrics = _dense_flow_motion_transfer(
+                anchor_frame=anchor_frame,
+                motion_reference_video=shot_plan.motion_reference_video,
+                width=final_width,
+                height=final_height,
+                fps=fps,
+                frame_limit=num_frames,
+            )
+        except Exception as exc:  # pragma: no cover - defensive fallback for model runtime variability
+            motion_conditioning_metrics = {
+                "motion_conditioning_mode": "prompt_only_fallback",
+                "motion_conditioning_error": str(exc)[:300],
+            }
+            warnings.append(
+                "Direct motion conditioning failed; falling back to prompt-only motion transfer for this render."
+            )
+    elif shot_plan.motion_reference_video and motion_conditioning_mode not in {"prompt_only", "direct_warp"}:
+        warnings.append(
+            f"Unknown GENERATION_MOTION_CONDITIONING_MODE={motion_conditioning_mode}; using prompt-only motion transfer."
+        )
+        motion_conditioning_metrics = {"motion_conditioning_mode": "prompt_only_invalid_override"}
+
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -327,15 +473,18 @@ def main() -> None:
 
     ensure_video_output(output_path)
 
-    warnings: list[str] = []
     if len(identity_pack.images) > 1 and image_prep_metadata.get("multi_image_mode") == "hero_grid":
         warnings.append("Multiple identity images were packed into a reference canvas; learned identity fusion is not implemented yet.")
     elif len(identity_pack.images) > 1:
         warnings.append("Multiple identity images were provided, but only one image was used because GENERATION_MULTI_IMAGE_MODE=primary_only.")
     if identity_pack.identity_video:
-        warnings.append("Identity video is not consumed by the first CogVideoX backend yet.")
-    if shot_plan.motion_reference_profile:
-        warnings.append("Motion reference video is consumed through derived motion-profile prompting, not direct control-video conditioning.")
+        warnings.append("Identity video contributes sampled support frames, but learned identity-video fusion is not implemented yet.")
+    if shot_plan.task_type == "portrait_reenactment":
+        warnings.append("Portrait reenactment mode is structured around a driving-video control bundle, but the current CogVideoX backend does not perform native model-level motion reenactment yet.")
+    if shot_plan.motion_reference_profile and motion_conditioning_metrics.get("motion_conditioning_mode") == "direct_warp":
+        warnings.append("Motion reference video is consumed through experimental optical-flow warp conditioning after base generation.")
+    elif shot_plan.motion_reference_profile:
+        warnings.append("Native model-level motion tracking from the reference video is not implemented in the CogVideoX backend; the reference is only converted into prompt-level motion guidance.")
     elif shot_plan.motion_reference_video:
         warnings.append("Motion reference video was provided but motion analysis did not resolve a usable profile.")
     if shot_plan.negative_prompt:
@@ -357,6 +506,10 @@ def main() -> None:
                     "width": final_width,
                     "height": final_height,
                     **image_prep_metadata,
+                    **motion_conditioning_metrics,
+                    "task_type": shot_plan.task_type,
+                    "has_control_bundle": "yes" if control_bundle else "no",
+                    "control_frames": control_bundle.sampled_frames if control_bundle else 0,
                     "motion_profile_used": "yes" if shot_plan.motion_reference_profile else "no",
                 },
                 warnings=warnings,

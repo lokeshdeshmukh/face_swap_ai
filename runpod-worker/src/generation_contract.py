@@ -137,9 +137,61 @@ class RenderProfile:
 
 
 @dataclass(slots=True)
+class ControlBundle:
+    version: int
+    driving_video: str
+    frame_dir: str
+    sampled_frames: int
+    sample_fps: float
+    duration_seconds: float | None
+    source_fps: float | None
+    motion_type: str | None = None
+    motion_summary: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def validate(self) -> None:
+        if self.version != CONTRACT_VERSION:
+            raise ContractError(f"unsupported control bundle version: {self.version}")
+        if not self.driving_video.strip():
+            raise ContractError("control bundle driving_video must be non-empty")
+        if not self.frame_dir.strip():
+            raise ContractError("control bundle frame_dir must be non-empty")
+        if self.sampled_frames <= 0:
+            raise ContractError("control bundle sampled_frames must be > 0")
+        if self.sample_fps <= 0:
+            raise ContractError("control bundle sample_fps must be > 0")
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ControlBundle":
+        duration_seconds = data.get("duration_seconds")
+        source_fps = data.get("source_fps")
+        if duration_seconds is not None and not isinstance(duration_seconds, (int, float)):
+            raise ContractError("control bundle duration_seconds must be numeric when provided")
+        if source_fps is not None and not isinstance(source_fps, (int, float)):
+            raise ContractError("control bundle source_fps must be numeric when provided")
+        bundle = cls(
+            version=_require_int(data, "version", minimum=1),
+            driving_video=_require_string(data, "driving_video"),
+            frame_dir=_require_string(data, "frame_dir"),
+            sampled_frames=_require_int(data, "sampled_frames", minimum=1),
+            sample_fps=float(data.get("sample_fps", 0.0)),
+            duration_seconds=float(duration_seconds) if duration_seconds is not None else None,
+            source_fps=float(source_fps) if source_fps is not None else None,
+            motion_type=_optional_string(data, "motion_type"),
+            motion_summary=_optional_string(data, "motion_summary"),
+        )
+        bundle.validate()
+        return bundle
+
+
+@dataclass(slots=True)
 class ShotPlan:
     version: int
+    task_type: str
     identity_pack_path: str
+    control_bundle_path: str | None
     prompt: str
     negative_prompt: str | None
     motion_preset: str | None
@@ -154,7 +206,9 @@ class ShotPlan:
     def to_dict(self) -> dict[str, Any]:
         return {
             "version": self.version,
+            "task_type": self.task_type,
             "identity_pack_path": self.identity_pack_path,
+            "control_bundle_path": self.control_bundle_path,
             "prompt": self.prompt,
             "negative_prompt": self.negative_prompt,
             "motion_preset": self.motion_preset,
@@ -170,8 +224,11 @@ class ShotPlan:
     def validate(self) -> None:
         if self.version != CONTRACT_VERSION:
             raise ContractError(f"unsupported shot plan version: {self.version}")
+        if self.task_type not in {"portrait_reenactment", "image_to_video_generation"}:
+            raise ContractError(f"unsupported task_type: {self.task_type}")
         if not self.prompt.strip():
-            raise ContractError("shot plan prompt must be non-empty")
+            if self.task_type != "portrait_reenactment":
+                raise ContractError("shot plan prompt must be non-empty")
         if self.duration_seconds <= 0:
             raise ContractError("duration_seconds must be > 0")
         if self.motion_reference_profile is not None and not isinstance(self.motion_reference_profile, dict):
@@ -183,10 +240,15 @@ class ShotPlan:
         seed = data.get("seed")
         if seed is not None and not isinstance(seed, int):
             raise ContractError("seed must be an integer when provided")
+        prompt = data.get("prompt")
+        if not isinstance(prompt, str):
+            raise ContractError("prompt must be a string")
         plan = cls(
             version=_require_int(data, "version", minimum=1),
+            task_type=_require_string(data, "task_type"),
             identity_pack_path=_require_string(data, "identity_pack_path"),
-            prompt=_require_string(data, "prompt"),
+            control_bundle_path=_optional_string(data, "control_bundle_path"),
+            prompt=prompt,
             negative_prompt=_optional_string(data, "negative_prompt"),
             motion_preset=_optional_string(data, "motion_preset"),
             style_preset=_optional_string(data, "style_preset"),
@@ -257,6 +319,15 @@ def load_shot_plan(path: Path) -> ShotPlan:
 def save_shot_plan(path: Path, plan: ShotPlan) -> None:
     plan.validate()
     path.write_text(json.dumps(plan.to_dict(), indent=2), encoding="utf-8")
+
+
+def load_control_bundle(path: Path) -> ControlBundle:
+    return ControlBundle.from_dict(json.loads(path.read_text(encoding="utf-8")))
+
+
+def save_control_bundle(path: Path, bundle: ControlBundle) -> None:
+    bundle.validate()
+    path.write_text(json.dumps(bundle.to_dict(), indent=2), encoding="utf-8")
 
 
 def load_adapter_report(path: Path) -> AdapterReport:

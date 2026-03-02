@@ -44,7 +44,11 @@ class JobService:
 
     @staticmethod
     def _is_generation_mode(mode: JobMode) -> bool:
-        return mode in {JobMode.ai_video_generate, JobMode.photo_to_video}
+        return mode in {JobMode.portrait_reenactment, JobMode.ai_video_generate, JobMode.photo_to_video}
+
+    @staticmethod
+    def _is_reenactment_mode(mode: JobMode) -> bool:
+        return mode == JobMode.portrait_reenactment
 
     def create_job(
         self,
@@ -69,6 +73,7 @@ class JobService:
     ) -> Job:
         job_id = str(uuid.uuid4())
         is_generation_mode = self._is_generation_mode(mode)
+        is_reenactment_mode = self._is_reenactment_mode(mode)
 
         if reference_video_name and reference_video_bytes:
             validate_extension(reference_video_name, "video")
@@ -81,9 +86,11 @@ class JobService:
         if driving_audio_name:
             validate_extension(driving_audio_name, "audio")
 
+        if is_reenactment_mode and not reference_video_bytes:
+            raise ValueError("driving video is required for portrait reenactment")
         if not is_generation_mode and not reference_video_bytes:
             raise ValueError("reference video is required for legacy modes")
-        if is_generation_mode and not (prompt or "").strip():
+        if mode == JobMode.ai_video_generate and not (prompt or "").strip():
             raise ValueError("prompt is required for generation modes")
 
         if reference_video_bytes:
@@ -412,6 +419,11 @@ class JobService:
                     "style_preset": (style_preset or "studio_realism").strip(),
                     "duration_seconds": max(2, min(int(duration_seconds or 5), 20)),
                     "seed": seed,
+                    "task_type": (
+                        "portrait_reenactment"
+                        if mode == JobMode.portrait_reenactment
+                        else "image_to_video_generation"
+                    ),
                 }
             )
         return payload

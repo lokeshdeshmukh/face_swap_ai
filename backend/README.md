@@ -25,6 +25,10 @@ uvicorn app.main:app --reload --port 8000
 - `POST /v1/jobs`
   - required form fields: `mode`
   - generation modes:
+    - `portrait_reenactment`
+    - required driving input: `reference_video`
+    - prompt is optional
+    - optional text/number fields: `prompt`, `negative_prompt`, `motion_preset`, `style_preset`, `duration_seconds`, `seed`
     - `ai_video_generate`
     - `photo_to_video`
     - required text field: `prompt`

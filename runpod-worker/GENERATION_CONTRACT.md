@@ -4,6 +4,7 @@ The generation worker uses two JSON contracts and two optional adapter commands.
 
 Current first real backend in this repo:
 
+- portrait reenactment wrapper: `/worker/src/generation_render_reenactment.py`
 - render: `/worker/src/generation_render_cogvideox.py`
 - refine: `/worker/src/generation_refine_basic.py`
 
@@ -12,9 +13,12 @@ Current first real backend in this repo:
 - `identity_pack.json`
   - produced by worker before generation
   - contains identity image inventory and optional identity video
+- `control_bundle.json`
+  - produced by worker before render for driving-video reenactment
+  - contains sampled driving frames and motion metadata
 - `shot_plan.json`
   - produced by worker before render
-  - contains prompt, motion/style presets, duration, seed, and render profile
+  - contains task type, prompt, motion/style presets, duration, seed, render profile, and optional control bundle path
 
 Contract parsing and validation lives in:
 
@@ -24,6 +28,12 @@ Contract parsing and validation lives in:
 
 ```bash
 <render-command> --shot-plan /path/to/shot_plan.json --output /path/to/rendered.mp4
+```
+
+Portrait reenactment render adapters may also receive:
+
+```bash
+--identity-pack /path/to/identity_pack.json --control-bundle /path/to/control_bundle.json
 ```
 
 Optional:
@@ -74,13 +84,17 @@ They are placeholders for local verification only.
 
 The initial self-hosted backend is intentionally narrow:
 
+- supports `portrait_reenactment` as a first-class worker task
+- routes `portrait_reenactment` through a dedicated wrapper backend instead of the generic CogVideoX adapter
 - uses CogVideoX image-to-video on Runpod GPU
 - can convert up to 4 identity images into one reference canvas for the model input
 - can be forced back to one image with `GENERATION_MULTI_IMAGE_MODE=primary_only`
 - does not yet do learned multi-image identity fusion
 - can sample identity-video frames and add the strongest ones into the identity pack
+- can extract a control bundle from a driving video so reenactment assets remain first-class inputs
 - can analyze motion-reference video and convert it into a motion profile that is appended to prompting
-- does not yet do direct control-video conditioning from the motion reference clip
+- motion-reference video is currently reduced to motion-profile prompting in the CogVideoX backend
+- `GENERATION_MOTION_CONDITIONING_MODE=direct_warp` exists only as an experimental post-generation fallback, not as true model-level motion tracking
 - refine stage is currently a passthrough copy stage
 
 This is still a real self-hosted generation path, but not the final industry-grade identity stack yet.
