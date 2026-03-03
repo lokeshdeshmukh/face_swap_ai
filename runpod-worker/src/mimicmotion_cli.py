@@ -170,6 +170,7 @@ def _tfs_frame_to_uint8(frame):
     return frame
 
 
+    
 def _tfs_is_pathlike(value):
     return isinstance(value, (str, bytes)) or hasattr(value, "__fspath__")
 
