@@ -55,14 +55,15 @@ def _ensure_model_path() -> Path:
 
     weights_root = _weights_root()
     weights_root.mkdir(parents=True, exist_ok=True)
+    default_model_url = "https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.3.pth"
     model_url = (
         os.getenv(
             "GFPGAN_MODEL_URL",
-            "https://github.com/TencentARC/GFPGAN/releases/download/v1.4.0/GFPGANv1.4.pth",
+            default_model_url,
         ).strip()
-        or "https://github.com/TencentARC/GFPGAN/releases/download/v1.4.0/GFPGANv1.4.pth"
+        or default_model_url
     )
-    model_name = Path(model_url).name or "GFPGANv1.4.pth"
+    model_name = Path(model_url).name or "GFPGANv1.3.pth"
     model_path = weights_root / model_name
     if not model_path.exists():
         downloaded = load_file_from_url(
