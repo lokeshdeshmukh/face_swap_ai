@@ -4,6 +4,7 @@ WORKDIR /worker
 
 ARG MUSEPOSE_REF=main
 
+
 ENV WORKER_PIPELINE_MODE=generation
 ENV PYTHONPATH=/worker/src
 ENV PORTRAIT_REENACTMENT_RENDER_COMMAND="python3 /worker/src/generation_render_reenactment.py"
