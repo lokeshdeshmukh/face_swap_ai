@@ -213,8 +213,8 @@ def _build_config_text(
     fps: int,
     resolution: int,
     seed: int,
+    sample_stride: int,
 ) -> str:
-    sample_stride = int(os.getenv("MIMICMOTION_SAMPLE_STRIDE", "2"))
     overlap = int(os.getenv("MIMICMOTION_FRAMES_OVERLAP", "6"))
     steps = int(os.getenv("MIMICMOTION_NUM_INFERENCE_STEPS", "25"))
     guidance = float(os.getenv("MIMICMOTION_GUIDANCE_SCALE", "2.2"))
@@ -272,7 +272,19 @@ def main() -> None:
     checkpoint_path, base_model_path = _ensure_weights(repo_dir, venv_bin_dir)
     requested_frame_count = max(1, args.frame_count)
     probed_frame_count = _ffprobe_frame_count(Path(args.driving_video))
-    frame_count = min(requested_frame_count, probed_frame_count) if probed_frame_count else requested_frame_count
+    configured_sample_stride = max(1, int(os.getenv("MIMICMOTION_SAMPLE_STRIDE", "2")))
+    sample_stride = configured_sample_stride
+    if probed_frame_count:
+        # MimicMotion uses task_config.num_frames as tile_size, while the actual num_frames passed
+        # into the pipeline is the pose sequence length after sample_stride downsampling plus the
+        # reference image frame. Keep tile_size within the effective pose-frame budget.
+        estimated_pose_frames = max(2, probed_frame_count // sample_stride + 1)
+        if requested_frame_count > estimated_pose_frames and sample_stride > 1:
+            sample_stride = 1
+            estimated_pose_frames = max(2, probed_frame_count // sample_stride + 1)
+        frame_count = min(requested_frame_count, estimated_pose_frames)
+    else:
+        frame_count = requested_frame_count
     resolution = max(256, args.resolution)
 
     with tempfile.TemporaryDirectory(prefix="mimicmotion-config-") as temp_dir:
@@ -288,6 +300,7 @@ def main() -> None:
                 fps=max(1, args.fps),
                 resolution=resolution,
                 seed=args.seed,
+                sample_stride=sample_stride,
             ),
             encoding="utf-8",
         )
