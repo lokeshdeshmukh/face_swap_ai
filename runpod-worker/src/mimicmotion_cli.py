@@ -128,6 +128,80 @@ def _patch_repo_for_torch(repo_dir: Path) -> None:
         )
 
 
+def _patch_repo_video_writer(repo_dir: Path) -> None:
+    utils_path = _ensure_repo_path(repo_dir, "mimicmotion/utils/utils.py")
+    source = utils_path.read_text(encoding="utf-8")
+    marker = "# TRUEFACESWAPVIDEO_FFMPEG_SAVE_PATCH"
+    if marker in source:
+        return
+
+    patch = """
+
+# TRUEFACESWAPVIDEO_FFMPEG_SAVE_PATCH
+import subprocess as _tfs_subprocess
+import tempfile as _tfs_tempfile
+from pathlib import Path as _tfs_Path
+
+import numpy as _tfs_np
+
+try:
+    import torch as _tfs_torch
+except Exception:
+    _tfs_torch = None
+
+
+def _tfs_frame_to_uint8(frame):
+    if _tfs_torch is not None and isinstance(frame, _tfs_torch.Tensor):
+        frame = frame.detach().cpu().numpy()
+    else:
+        frame = _tfs_np.asarray(frame)
+    if frame.ndim == 3 and frame.shape[0] in (1, 3, 4) and frame.shape[-1] not in (1, 3, 4):
+        frame = _tfs_np.transpose(frame, (1, 2, 0))
+    if frame.ndim == 2:
+        frame = _tfs_np.stack([frame] * 3, axis=-1)
+    if frame.shape[-1] == 4:
+        frame = frame[..., :3]
+    if frame.dtype != _tfs_np.uint8:
+        upper = 1.0 if float(frame.max()) <= 1.0 else 255.0
+        frame = _tfs_np.clip(frame, 0.0, upper)
+        if upper == 1.0:
+            frame = frame * 255.0
+        frame = frame.astype(_tfs_np.uint8)
+    return frame
+
+
+def save_to_mp4(save_path, frames, fps):
+    from PIL import Image as _tfs_Image
+
+    output_path = _tfs_Path(save_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with _tfs_tempfile.TemporaryDirectory(prefix="mimicmotion-frames-") as temp_dir:
+        frame_dir = _tfs_Path(temp_dir)
+        for index, frame in enumerate(frames):
+            _tfs_Image.fromarray(_tfs_frame_to_uint8(frame)).save(frame_dir / f"frame_{index:06d}.png")
+        command = [
+            "ffmpeg",
+            "-y",
+            "-framerate",
+            str(max(int(round(float(fps))), 1)),
+            "-i",
+            str(frame_dir / "frame_%06d.png"),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ]
+        result = _tfs_subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0:
+            details = result.stderr.strip() or result.stdout.strip() or "unknown ffmpeg error"
+            raise RuntimeError(f"ffmpeg video write failed: {details}")
+"""
+    utils_path.write_text(source.rstrip() + patch, encoding="utf-8")
+
+
 def _ensure_weights(repo_dir: Path, venv_bin_dir: Path) -> tuple[Path, Path]:
     weights_root = _weights_root()
     checkpoints_dir = weights_root / "checkpoints"
@@ -279,6 +353,7 @@ def main() -> None:
         raise SystemExit(f"MimicMotion python runtime not found: {python_bin}")
 
     _patch_repo_for_torch(repo_dir)
+    _patch_repo_video_writer(repo_dir)
     checkpoint_path, base_model_path = _ensure_weights(repo_dir, venv_bin_dir)
     requested_frame_count = max(1, args.frame_count)
     probed_frame_count = _ffprobe_frame_count(Path(args.driving_video))
