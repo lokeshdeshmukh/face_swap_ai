@@ -26,16 +26,26 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None) -> str:
-    result = subprocess.run(
+    process = subprocess.Popen(
         cmd,
         cwd=str(cwd) if cwd else None,
         env=env,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
+        bufsize=1,
     )
-    if result.returncode != 0:
-        raise SystemExit(f"command failed: {' '.join(cmd)}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
-    return result.stdout
+    lines: list[str] = []
+    assert process.stdout is not None
+    for raw_line in process.stdout:
+        line = raw_line.rstrip()
+        lines.append(line)
+        print(line, flush=True)
+    return_code = process.wait()
+    output = "\n".join(lines)
+    if return_code != 0:
+        raise SystemExit(f"command failed: {' '.join(cmd)}\nstdout+stderr:\n{output}")
+    return output
 
 
 def _hf_token() -> str | None:

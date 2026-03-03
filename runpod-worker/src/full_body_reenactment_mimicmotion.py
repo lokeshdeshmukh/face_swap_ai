@@ -21,9 +21,22 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _run(cmd: list[str]) -> None:
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise SystemExit(f"command failed: {' '.join(cmd)}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    lines: list[str] = []
+    assert process.stdout is not None
+    for raw_line in process.stdout:
+        line = raw_line.rstrip()
+        lines.append(line)
+        print(line, flush=True)
+    return_code = process.wait()
+    if return_code != 0:
+        raise SystemExit(f"command failed: {' '.join(cmd)}\nstdout+stderr:\n" + "\n".join(lines))
 
 
 def _has_audio_stream(video_path: Path) -> bool:
