@@ -5,6 +5,7 @@ import argparse
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -104,6 +105,31 @@ def _weights_root() -> Path:
     if volume_root.exists():
         return volume_root / "truefaceswap-cache" / "mimicmotion"
     return Path("/opt/mimicmotion/models")
+
+
+def _augment_cuda_library_path(env: dict[str, str], venv_bin_dir: Path) -> None:
+    version = f"python{sys.version_info.major}.{sys.version_info.minor}"
+    site_packages = venv_bin_dir.parent / "lib" / version / "site-packages" / "nvidia"
+    candidate_dirs = [
+        site_packages / "cudnn" / "lib",
+        site_packages / "cublas" / "lib",
+        site_packages / "cuda_runtime" / "lib",
+        site_packages / "cufft" / "lib",
+        site_packages / "curand" / "lib",
+        site_packages / "cusolver" / "lib",
+        site_packages / "cusparse" / "lib",
+        site_packages / "nvtx" / "lib",
+    ]
+    existing = [str(path) for path in candidate_dirs if path.exists()]
+    if not existing:
+        return
+    current = env.get("LD_LIBRARY_PATH", "")
+    merged: list[str] = []
+    for entry in existing + ([current] if current else []):
+        if not entry or entry in merged:
+            continue
+        merged.append(entry)
+    env["LD_LIBRARY_PATH"] = ":".join(merged)
 
 
 def _ensure_repo_path(repo_dir: Path, relative_path: str) -> Path:
@@ -411,6 +437,7 @@ def main() -> None:
         cache_root = _weights_root()
         env.setdefault("HF_HOME", str(cache_root / "hf_home"))
         env.setdefault("HUGGINGFACE_HUB_CACHE", str(cache_root / "hf_cache"))
+        _augment_cuda_library_path(env, venv_bin_dir)
 
         config_flag = _detect_config_flag(inference_script, python_bin, repo_dir, env)
         command = [str(python_bin), str(inference_script)]

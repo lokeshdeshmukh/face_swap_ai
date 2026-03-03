@@ -31,6 +31,7 @@ export default function HomePage() {
   const [seed, setSeed] = useState("");
 
   const [referenceVideo, setReferenceVideo] = useState<File | null>(null);
+  const [drivingMaskVideo, setDrivingMaskVideo] = useState<File | null>(null);
   const [sourceImages, setSourceImages] = useState<File[]>([]);
   const [sourceVideo, setSourceVideo] = useState<File | null>(null);
   const [drivingAudio, setDrivingAudio] = useState<File | null>(null);
@@ -121,6 +122,7 @@ export default function HomePage() {
       if (seed.trim()) form.append("seed", seed.trim());
     }
     if (referenceVideo) form.append("reference_video", referenceVideo);
+    if (drivingMaskVideo) form.append("driving_mask_video", drivingMaskVideo);
     sourceImages.forEach((file) => form.append("source_images", file));
     if (sourceVideo) form.append("source_video", sourceVideo);
     if (drivingAudio) form.append("driving_audio", drivingAudio);
@@ -284,24 +286,41 @@ export default function HomePage() {
             </p>
           </div>
 
+          <div>
+            <label htmlFor="reference">{isReenactmentMode ? "Driving Video" : isGenerationMode ? "Motion Reference Video (optional)" : "Reference Video"}</label>
+            <input
+              id="reference"
+              type="file"
+              accept="video/*"
+              onChange={(e) => setReferenceVideo(e.target.files?.[0] ?? null)}
+            />
+            <p className="muted" style={{ marginTop: 6 }}>
+              {referenceVideo
+                ? referenceVideo.name
+                : isReenactmentMode
+                  ? isFullBodyReenactmentMode
+                    ? "Upload the performer video whose full-body motion and expressions should drive the identity."
+                    : "Upload the performer video whose motion and expressions should drive the identity."
+                  : "No reference video selected"}
+            </p>
+          </div>
+
+          {isFullBodyReenactmentMode ? (
             <div>
-              <label htmlFor="reference">{isReenactmentMode ? "Driving Video" : isGenerationMode ? "Motion Reference Video (optional)" : "Reference Video"}</label>
+              <label htmlFor="drivingMaskVideo">Driving Mask Video (optional)</label>
               <input
-                id="reference"
+                id="drivingMaskVideo"
                 type="file"
                 accept="video/*"
-                onChange={(e) => setReferenceVideo(e.target.files?.[0] ?? null)}
+                onChange={(e) => setDrivingMaskVideo(e.target.files?.[0] ?? null)}
               />
               <p className="muted" style={{ marginTop: 6 }}>
-                {referenceVideo
-                  ? referenceVideo.name
-                  : isReenactmentMode
-                    ? isFullBodyReenactmentMode
-                      ? "Upload the performer video whose full-body motion and expressions should drive the identity."
-                      : "Upload the performer video whose motion and expressions should drive the identity."
-                    : "No reference video selected"}
+                {drivingMaskVideo
+                  ? drivingMaskVideo.name
+                  : "Optional binary/alpha mask video for subject replacement when using the stronger renderer."}
               </p>
             </div>
+          ) : null}
 
           <div>
             <label htmlFor="audio">

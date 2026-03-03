@@ -17,8 +17,8 @@ ENV FULL_BODY_BASE_RENDER_COMMAND="python3 /worker/src/full_body_reenactment_mim
 ENV FULL_BODY_FACE_REFINER_COMMAND="python3 /worker/src/full_body_face_refiner_gfpgan.py"
 ENV FULL_BODY_TEMPORAL_CLEANUP_COMMAND="python3 /worker/src/full_body_temporal_cleanup_ffmpeg.py"
 ENV FULL_BODY_STRONGER_RENDER_WRAPPER="python3 /worker/src/full_body_reenactment_stronger_base.py"
-ENV FULL_BODY_STRONGER_RENDER_COMMAND=""
-ENV FULL_BODY_STRONGER_RENDER_BACKEND="unconfigured"
+ENV FULL_BODY_STRONGER_RENDER_COMMAND="python3 /worker/src/full_body_reenactment_hunyuancustom.py"
+ENV FULL_BODY_STRONGER_RENDER_BACKEND="hunyuancustom"
 ENV MIMICMOTION_REPO_DIR=/opt/mimicmotion
 ENV MIMICMOTION_VENV_BIN=/opt/mimicmotion-venv/bin
 ENV MIMICMOTION_HF_REPO=Tencent/MimicMotion
@@ -161,7 +161,7 @@ RUN python3 -m venv --system-site-packages /opt/mimicmotion-venv && \
 RUN if [ -f "${MIMICMOTION_REPO_DIR}/requirements.txt" ]; then "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir -r "${MIMICMOTION_REPO_DIR}/requirements.txt"; fi
 
 RUN "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir "huggingface_hub[cli]" omegaconf einops pyyaml decord matplotlib av && \
-    ("${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir "onnxruntime-gpu==1.20.1" || \
+    ("${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir "onnxruntime-gpu==1.20.1" "nvidia-cudnn-cu12>=9.3,<10" || \
      "${MIMICMOTION_VENV_BIN}/python" -m pip install --no-cache-dir "onnxruntime==1.20.1")
 
 RUN cd "${MIMICMOTION_REPO_DIR}" && \
@@ -175,7 +175,7 @@ RUN set -eux; \
     printf '#!/usr/bin/env bash\nexec python3 /worker/src/mimicmotion_cli.py "$@"\n' > /usr/local/bin/mimicmotion; \
     chmod +x /usr/local/bin/mimicmotion; \
     chmod +x /worker/scripts/example_generation_render.py /worker/scripts/example_generation_refine.py; \
-    chmod +x /worker/src/generation_render_cogvideox.py /worker/src/generation_render_reenactment.py /worker/src/generation_render_full_body_reenactment.py /worker/src/portrait_reenactment_liveportrait.py /worker/src/full_body_reenactment_mimicmotion.py /worker/src/full_body_reenactment_quality_pipeline.py /worker/src/full_body_reenactment_stronger_base.py /worker/src/full_body_face_refiner_gfpgan.py /worker/src/full_body_temporal_cleanup_ffmpeg.py /worker/src/generation_refine_basic.py /worker/src/liveportrait_cli.py /worker/src/mimicmotion_cli.py; \
+    chmod +x /worker/src/generation_render_cogvideox.py /worker/src/generation_render_reenactment.py /worker/src/generation_render_full_body_reenactment.py /worker/src/portrait_reenactment_liveportrait.py /worker/src/full_body_reenactment_mimicmotion.py /worker/src/full_body_reenactment_quality_pipeline.py /worker/src/full_body_reenactment_stronger_base.py /worker/src/full_body_reenactment_hunyuancustom.py /worker/src/full_body_face_refiner_gfpgan.py /worker/src/full_body_temporal_cleanup_ffmpeg.py /worker/src/generation_refine_basic.py /worker/src/liveportrait_cli.py /worker/src/mimicmotion_cli.py; \
     mimicmotion --help >/dev/null
 WORKDIR /worker/src
 

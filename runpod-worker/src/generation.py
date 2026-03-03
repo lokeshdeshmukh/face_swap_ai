@@ -325,6 +325,7 @@ def analyze_motion_reference_video(motion_reference_video: Optional[Path], outpu
 
 def build_control_bundle(
     driving_video: Optional[Path],
+    mask_video: Optional[Path],
     output_dir: Path,
     progress: Optional[ProgressCallback] = None,
 ) -> Path | None:
@@ -359,6 +360,7 @@ def build_control_bundle(
     bundle = ControlBundle(
         version=CONTRACT_VERSION,
         driving_video=str(driving_video),
+        mask_video=str(mask_video) if mask_video and mask_video.exists() else None,
         frame_dir=str(frame_dir),
         sampled_frames=len(extracted),
         sample_fps=sample_fps,

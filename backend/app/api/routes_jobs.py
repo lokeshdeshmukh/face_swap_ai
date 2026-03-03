@@ -26,6 +26,7 @@ async def create_job(
     duration_seconds: int | None = Form(None),
     seed: int | None = Form(None),
     reference_video: UploadFile | None = File(None),
+    driving_mask_video: UploadFile | None = File(None),
     source_image: UploadFile | None = File(None),  # legacy single-source field
     source_images: list[UploadFile] | None = File(None),
     source_video: UploadFile | None = File(None),
@@ -33,6 +34,7 @@ async def create_job(
     db: Session = Depends(get_db),
 ) -> JobCreateResponse:
     reference_video_bytes = await reference_video.read() if reference_video else None
+    driving_mask_video_bytes = await driving_mask_video.read() if driving_mask_video else None
     source_uploads: list[UploadFile] = []
     if source_image is not None:
         source_uploads.append(source_image)
@@ -56,6 +58,8 @@ async def create_job(
             aspect_ratio=aspect_ratio,
             reference_video_name=reference_video.filename if reference_video else None,
             reference_video_bytes=reference_video_bytes,
+            driving_mask_video_name=driving_mask_video.filename if driving_mask_video else None,
+            driving_mask_video_bytes=driving_mask_video_bytes,
             source_images=source_image_payloads,
             source_video_name=source_video.filename if source_video else None,
             source_video_bytes=source_video_bytes,

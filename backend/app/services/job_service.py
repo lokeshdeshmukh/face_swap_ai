@@ -64,6 +64,8 @@ class JobService:
         aspect_ratio: AspectRatio,
         reference_video_name: str | None,
         reference_video_bytes: bytes | None,
+        driving_mask_video_name: str | None,
+        driving_mask_video_bytes: bytes | None,
         source_images: list[tuple[str, bytes]],
         source_video_name: str | None,
         source_video_bytes: bytes | None,
@@ -82,6 +84,8 @@ class JobService:
 
         if reference_video_name and reference_video_bytes:
             validate_extension(reference_video_name, "video")
+        if driving_mask_video_name and driving_mask_video_bytes:
+            validate_extension(driving_mask_video_name, "video")
         if not source_images and not source_video_bytes:
             raise ValueError("at least one source image or a source video is required")
         for source_image_name, _ in source_images:
@@ -100,6 +104,8 @@ class JobService:
 
         if reference_video_bytes:
             self._validate_size(reference_video_bytes)
+        if driving_mask_video_bytes:
+            self._validate_size(driving_mask_video_bytes)
         for _, source_image_bytes in source_images:
             self._validate_size(source_image_bytes)
         if source_video_bytes:
@@ -124,6 +130,7 @@ class JobService:
                 str(enable_4k),
                 aspect_ratio.value,
                 self._sha256_bytes(reference_video_bytes) if reference_video_bytes else "",
+                self._sha256_bytes(driving_mask_video_bytes) if driving_mask_video_bytes else "",
                 ",".join(self._sha256_bytes(source_image_bytes) for _, source_image_bytes in source_images),
                 self._sha256_bytes(source_video_bytes) if source_video_bytes else "",
                 self._sha256_bytes(driving_audio_bytes) if driving_audio_bytes else "",
@@ -140,6 +147,10 @@ class JobService:
         reference_video_path = ""
         if reference_video_name and reference_video_bytes:
             reference_video_path = self.storage.persist_upload(job_id, reference_video_name, reference_video_bytes)
+        driving_mask_video_ref = None
+        if driving_mask_video_name and driving_mask_video_bytes:
+            ext = Path(driving_mask_video_name).suffix.lower() or ".mp4"
+            driving_mask_video_ref = self.storage.persist_upload(job_id, f"driving_mask{ext}", driving_mask_video_bytes)
         source_image_refs: list[str] = []
         for idx, (source_image_name, source_image_bytes) in enumerate(source_images):
             ext = Path(source_image_name).suffix.lower() or ".jpg"
@@ -156,6 +167,8 @@ class JobService:
             source_image_refs=source_image_refs,
             source_video_ref=source_video_ref,
         )
+        if driving_mask_video_ref:
+            input_config["driving_mask_video_ref"] = driving_mask_video_ref
         driving_audio_path = None
         if driving_audio_name and driving_audio_bytes:
             driving_audio_path = self.storage.persist_upload(job_id, driving_audio_name, driving_audio_bytes)
@@ -216,10 +229,16 @@ class JobService:
         if not source_image_refs and not source_video_ref:
             raise RuntimeError("job has no source assets")
 
+        job_config = self._parse_input_config(job.input_config_json)
         asset_urls: dict[str, object] = {}
         if job.reference_video_path:
             asset_urls["reference_video_url"] = self.storage.build_asset_url(
                 job.reference_video_path, settings.asset_token_ttl_seconds
+            )
+        driving_mask_video_ref = job_config.get("driving_mask_video_ref")
+        if isinstance(driving_mask_video_ref, str) and driving_mask_video_ref.strip():
+            asset_urls["driving_mask_video_url"] = self.storage.build_asset_url(
+                driving_mask_video_ref, settings.asset_token_ttl_seconds
             )
         if source_image_refs:
             source_image_urls = [
@@ -244,7 +263,6 @@ class JobService:
 
         callback_url = self._callback_url_or_none()
         callback_secret = settings.callback_secret if callback_url else None
-        job_config = self._parse_input_config(job.input_config_json)
 
         self._start_stage(job, "generating", "processing")
         db.add(job)

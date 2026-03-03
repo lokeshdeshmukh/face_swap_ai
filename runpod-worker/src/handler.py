@@ -282,6 +282,7 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
         with tempfile.TemporaryDirectory(prefix="truefaceswap-") as tmp:
             tmp_path = Path(tmp)
             reference_video = tmp_path / "reference.mp4"
+            driving_mask_video = tmp_path / "driving_mask.mp4"
             source_video = tmp_path / "source_video.mp4"
             driving_audio = tmp_path / "driving_audio.wav"
             out_main = tmp_path / "result.mp4"
@@ -290,6 +291,10 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
             has_reference_video = bool(reference_video_url)
             if has_reference_video:
                 _download(str(reference_video_url), reference_video)
+            driving_mask_video_url = assets.get("driving_mask_video_url")
+            has_driving_mask_video = bool(driving_mask_video_url)
+            if has_driving_mask_video:
+                _download(str(driving_mask_video_url), driving_mask_video)
 
             source_image_urls = assets.get("source_image_urls")
             if isinstance(source_image_urls, list):
@@ -339,6 +344,7 @@ def handler(event: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 control_bundle_path = build_control_bundle(
                     driving_video=reference_video if has_reference_video else None,
+                    mask_video=driving_mask_video if has_driving_mask_video else None,
                     output_dir=generation_dir,
                     progress=_progress,
                 )

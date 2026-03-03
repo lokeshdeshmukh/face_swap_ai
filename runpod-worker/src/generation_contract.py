@@ -140,6 +140,7 @@ class RenderProfile:
 class ControlBundle:
     version: int
     driving_video: str
+    mask_video: str | None
     frame_dir: str
     sampled_frames: int
     sample_fps: float
@@ -156,6 +157,8 @@ class ControlBundle:
             raise ContractError(f"unsupported control bundle version: {self.version}")
         if not self.driving_video.strip():
             raise ContractError("control bundle driving_video must be non-empty")
+        if self.mask_video is not None and not self.mask_video.strip():
+            raise ContractError("control bundle mask_video must be non-empty when provided")
         if not self.frame_dir.strip():
             raise ContractError("control bundle frame_dir must be non-empty")
         if self.sampled_frames <= 0:
@@ -174,6 +177,7 @@ class ControlBundle:
         bundle = cls(
             version=_require_int(data, "version", minimum=1),
             driving_video=_require_string(data, "driving_video"),
+            mask_video=_optional_string(data, "mask_video"),
             frame_dir=_require_string(data, "frame_dir"),
             sampled_frames=_require_int(data, "sampled_frames", minimum=1),
             sample_fps=float(data.get("sample_fps", 0.0)),
