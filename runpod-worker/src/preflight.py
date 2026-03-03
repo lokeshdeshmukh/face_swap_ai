@@ -95,6 +95,24 @@ def _check_mimicmotion_runtime() -> List[str]:
     return errors
 
 
+def _check_musepose_runtime() -> List[str]:
+    repo_dir = Path(os.getenv("MUSEPOSE_REPO_DIR", "/opt/musepose"))
+    venv_bin_dir = Path(os.getenv("MUSEPOSE_VENV_BIN", "/opt/musepose-venv/bin"))
+
+    errors: List[str] = []
+    required_paths = [
+        repo_dir / "pose_align.py",
+        repo_dir / "test_stage_2.py",
+        Path(os.getenv("MUSEPOSE_CONFIG_PATH", str(repo_dir / "configs/test_stage_2.yaml"))),
+    ]
+    for path in required_paths:
+        if not path.exists():
+            errors.append(f"musepose required file not found at {path}")
+    if not (venv_bin_dir / "python").exists():
+        errors.append(f"musepose python runtime not found at {venv_bin_dir / 'python'}")
+    return errors
+
+
 def _portrait_backend_configured() -> bool:
     backend_name = os.getenv("PORTRAIT_REENACTMENT_BACKEND", "").strip().lower()
     backend_command = os.getenv("PORTRAIT_REENACTMENT_PIPELINE_COMMAND", "").strip()
@@ -109,6 +127,13 @@ def _full_body_backend_configured() -> bool:
 
 def _full_body_face_refiner_configured() -> bool:
     return bool(os.getenv("FULL_BODY_FACE_REFINER_COMMAND", "").strip())
+
+
+def _selected_full_body_runtime() -> str:
+    strategy = os.getenv("FULL_BODY_BASE_RENDER_STRATEGY", "mimicmotion").strip().lower() or "mimicmotion"
+    if strategy in {"stronger", "quality", "next"}:
+        return os.getenv("FULL_BODY_STRONGER_RENDER_BACKEND", "unconfigured").strip().lower() or "unconfigured"
+    return "mimicmotion"
 
 
 def run_preflight() -> Dict[str, object]:
@@ -140,8 +165,13 @@ def run_preflight() -> Dict[str, object]:
                     warnings.extend(portrait_reenactment_runtime)
         require_full_body_reenactment = _env_bool("REQUIRE_FULL_BODY_REENACTMENT_BACKEND", False)
         if require_full_body_reenactment or _full_body_backend_configured():
-            full_body_missing = _check_binaries(["mimicmotion"])
-            full_body_runtime = _check_mimicmotion_runtime()
+            selected_runtime = _selected_full_body_runtime()
+            if selected_runtime == "musepose":
+                full_body_missing = []
+                full_body_runtime = _check_musepose_runtime()
+            else:
+                full_body_missing = _check_binaries(["mimicmotion"])
+                full_body_runtime = _check_mimicmotion_runtime()
             if full_body_missing:
                 if require_full_body_reenactment:
                     errors.extend(full_body_missing)

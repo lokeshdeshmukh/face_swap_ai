@@ -16,6 +16,14 @@ docker build -f Dockerfile.generation -t truefaceswap-generation-worker .
 
 `Dockerfile.generation` is now optimized for the production `Full Body Reenactment` path. It intentionally omits the portrait runtime to keep build time and image size under control.
 
+Dedicated MusePose worker image:
+
+```bash
+docker build -f Dockerfile.musepose -t truefaceswap-musepose-worker .
+```
+
+`Dockerfile.musepose` is a separate full-body image that keeps MusePose isolated from the current MimicMotion baseline image.
+
 Concrete generation contract:
 
 - `GENERATION_CONTRACT.md`
@@ -44,6 +52,7 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
 - For production-sized outputs, replace `output_base64` with object-storage upload and return an `output_url`.
 - Generation pipeline modes (`portrait_reenactment`, `ai_video_generate`, `photo_to_video`) accept a `job_config` payload.
 - Generation workers can use `Dockerfile.generation` with `WORKER_PIPELINE_MODE=generation`.
+- MusePose workers should use `Dockerfile.musepose`.
 - Contract parsing/validation lives in `/worker/src/generation_contract.py`.
 - Driving-video reenactment now extracts a `control_bundle.json` before render.
 - To plug in a real in-house generation stack, implement the adapter CLI in `GENERATION_CONTRACT.md`.
@@ -51,7 +60,9 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - portrait reenactment render: `python3 /worker/src/generation_render_reenactment.py`
   - portrait reenactment pipeline: not bundled in `Dockerfile.generation`
   - full body reenactment render: `python3 /worker/src/generation_render_full_body_reenactment.py`
-  - full body reenactment pipeline: `python3 /worker/src/full_body_reenactment_mimicmotion.py`
+  - full body reenactment pipeline: `python3 /worker/src/full_body_reenactment_quality_pipeline.py`
+  - default full body base render stage: `python3 /worker/src/full_body_reenactment_mimicmotion.py`
+  - stronger full body renderer slot: `python3 /worker/src/full_body_reenactment_musepose.py`
   - render: `python3 /worker/src/generation_render_cogvideox.py`
   - refine: `python3 /worker/src/generation_refine_basic.py`
 - Portrait reenactment requires a dedicated in-repo model runner:
@@ -67,6 +78,11 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - if no volume is attached, weights fall back to `/opt/mimicmotion/models/checkpoints`
   - set `HF_TOKEN` on the Runpod endpoint and make sure the token has accepted access to `stabilityai/stable-video-diffusion-img2vid-xt-1-1`
   - this image sets `REQUIRE_FULL_BODY_REENACTMENT_BACKEND=true` by default
+  - stronger renderer path now targets MusePose:
+    - `FULL_BODY_STRONGER_RENDER_COMMAND="python3 /worker/src/full_body_reenactment_musepose.py"`
+    - `FULL_BODY_STRONGER_RENDER_BACKEND="musepose"`
+    - `Dockerfile.musepose` installs the upstream MusePose repo under `/opt/musepose`
+    - the wrapper stages MusePose weights into a persistent cache and runs upstream `pose_align.py` then `test_stage_2.py` with a generated runtime config
 - Default model:
   - `GENERATION_MODEL_ID=THUDM/CogVideoX-5b-I2V`
 - Preferred split for staged pipelines:
@@ -106,6 +122,24 @@ Push the image to a registry and configure it as the Runpod Serverless endpoint 
   - `MIMICMOTION_NOISE_AUG_STRENGTH`
   - `MIMICMOTION_FRAMES_OVERLAP`
   - `MIMICMOTION_RESOLUTION`
+  - `MUSEPOSE_REPO_DIR`
+  - `MUSEPOSE_VENV_BIN`
+  - `MUSEPOSE_PYTHON_BIN`
+  - `MUSEPOSE_ALIGN_SCRIPT`
+  - `MUSEPOSE_STAGE2_SCRIPT`
+  - `MUSEPOSE_CONFIG_PATH`
+  - `MUSEPOSE_WEIGHTS_DIR`
+  - `MUSEPOSE_HF_REPO`
+  - `MUSEPOSE_DWPOSE_HF_REPO`
+  - `MUSEPOSE_DWPOSE_MODEL`
+  - `MUSEPOSE_SD_VARIATIONS_REPO`
+  - `MUSEPOSE_VAE_REPO`
+  - `MUSEPOSE_YOLOX_URL`
+  - `MUSEPOSE_YOLOX_FILENAME`
+  - `MUSEPOSE_OUTPUT_FPS`
+  - `MUSEPOSE_WIDTH`
+  - `MUSEPOSE_HEIGHT`
+  - `MUSEPOSE_SEED`
   - `GENERATION_MODEL_ID`
   - `GENERATION_MODEL_DTYPE=auto|bf16|fp16`
   - `GENERATION_OFFLOAD_MODE=model|sequential|none`
