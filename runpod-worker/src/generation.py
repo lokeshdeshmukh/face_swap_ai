@@ -39,6 +39,16 @@ class GenerationError(RuntimeError):
 ProgressCallback = Callable[[str, dict[str, object] | None], None]
 
 
+def _report_flag_unsupported(error_text: str) -> bool:
+    lowered = error_text.lower()
+    return (
+        "unrecognized arguments: --report" in lowered
+        or "unknown option --report" in lowered
+        or "unknown argument --report" in lowered
+        or "no such option: --report" in lowered
+    )
+
+
 def _run(cmd: List[str]) -> str:
     logger.info("running command: %s", " ".join(cmd))
     process = subprocess.Popen(
@@ -581,7 +591,7 @@ def render_generation(
         try:
             _run(cmd)
         except GenerationError as exc:
-            if "--report" in str(exc):
+            if _report_flag_unsupported(str(exc)):
                 fallback_cmd = [*shlex.split(render_command), "--shot-plan", str(shot_plan_path), "--output", str(output_video)]
                 if shot_plan.identity_pack_path:
                     fallback_cmd.extend(["--identity-pack", str(shot_plan.identity_pack_path)])
@@ -639,7 +649,7 @@ def refine_generation(
         try:
             _run(cmd)
         except GenerationError as exc:
-            if "--report" in str(exc):
+            if _report_flag_unsupported(str(exc)):
                 fallback_cmd = [
                     *shlex.split(refine_command),
                     "--identity-pack",
