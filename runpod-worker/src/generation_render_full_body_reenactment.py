@@ -99,7 +99,7 @@ def main() -> None:
 
     if args.report:
         warnings = [
-            "Full-body reenactment expects a dedicated body-motion model backend; identity quality depends entirely on the configured pipeline."
+            "Full-body reenactment quality depends on the configured render pipeline; MimicMotion is only the default base renderer, not the final quality ceiling."
         ]
         if len(identity_pack.images) > 1:
             warnings.append("Multiple identity images were passed into the full-body reenactment wrapper.")

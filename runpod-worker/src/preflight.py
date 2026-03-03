@@ -107,6 +107,10 @@ def _full_body_backend_configured() -> bool:
     return bool(backend_command) or (backend_name not in {"", "unconfigured"})
 
 
+def _full_body_face_refiner_configured() -> bool:
+    return bool(os.getenv("FULL_BODY_FACE_REFINER_COMMAND", "").strip())
+
+
 def run_preflight() -> Dict[str, object]:
     errors: List[str] = []
     warnings: List[str] = []
@@ -118,6 +122,8 @@ def run_preflight() -> Dict[str, object]:
         )
         errors.extend(_check_binaries(["ffmpeg"]))
         errors.extend(_check_torch_cuda())
+        if _full_body_face_refiner_configured():
+            errors.extend(_check_python_modules(["gfpgan", "basicsr"]))
         require_portrait_reenactment = _env_bool("REQUIRE_PORTRAIT_REENACTMENT_BACKEND", False)
         if require_portrait_reenactment or _portrait_backend_configured():
             portrait_reenactment_missing = _check_binaries(["liveportrait"])

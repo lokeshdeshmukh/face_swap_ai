@@ -10,8 +10,15 @@ ENV PORTRAIT_REENACTMENT_RENDER_COMMAND="python3 /worker/src/generation_render_r
 ENV PORTRAIT_REENACTMENT_PIPELINE_COMMAND=""
 ENV PORTRAIT_REENACTMENT_BACKEND="unconfigured"
 ENV FULL_BODY_REENACTMENT_RENDER_COMMAND="python3 /worker/src/generation_render_full_body_reenactment.py"
-ENV FULL_BODY_REENACTMENT_PIPELINE_COMMAND="python3 /worker/src/full_body_reenactment_mimicmotion.py"
-ENV FULL_BODY_REENACTMENT_BACKEND="mimicmotion_cli"
+ENV FULL_BODY_REENACTMENT_PIPELINE_COMMAND="python3 /worker/src/full_body_reenactment_quality_pipeline.py"
+ENV FULL_BODY_REENACTMENT_BACKEND="quality_pipeline"
+ENV FULL_BODY_BASE_RENDER_STRATEGY="mimicmotion"
+ENV FULL_BODY_BASE_RENDER_COMMAND="python3 /worker/src/full_body_reenactment_mimicmotion.py"
+ENV FULL_BODY_FACE_REFINER_COMMAND="python3 /worker/src/full_body_face_refiner_gfpgan.py"
+ENV FULL_BODY_TEMPORAL_CLEANUP_COMMAND="python3 /worker/src/full_body_temporal_cleanup_ffmpeg.py"
+ENV FULL_BODY_STRONGER_RENDER_WRAPPER="python3 /worker/src/full_body_reenactment_stronger_base.py"
+ENV FULL_BODY_STRONGER_RENDER_COMMAND=""
+ENV FULL_BODY_STRONGER_RENDER_BACKEND="unconfigured"
 ENV MIMICMOTION_REPO_DIR=/opt/mimicmotion
 ENV MIMICMOTION_VENV_BIN=/opt/mimicmotion-venv/bin
 ENV MIMICMOTION_HF_REPO=Tencent/MimicMotion
@@ -32,6 +39,7 @@ ENV GENERATION_MODEL_DTYPE=auto
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg git python3-venv libgl1 libglib2.0-0 && \
+    (apt-get install -y --no-install-recommends libcudnn9-cuda-12 || apt-get install -y --no-install-recommends cudnn9-cuda-12) && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /worker/requirements.txt
@@ -43,6 +51,7 @@ RUN set -eux; \
     python3 -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu121 torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1; \
     python3 -m pip install --no-cache-dir -r /worker/requirements.txt; \
     python3 -m pip install --no-cache-dir -r /worker/requirements.generation.txt; \
+    python3 -m pip install --no-cache-dir gfpgan==1.3.8; \
     python3 -c "import requests, runpod, torch, diffusers, transformers, accelerate, PIL; print('deps-ok')"
 
 RUN git clone --depth 1 --branch "${MIMICMOTION_REF}" https://github.com/Tencent/MimicMotion.git "${MIMICMOTION_REPO_DIR}"
@@ -166,7 +175,7 @@ RUN set -eux; \
     printf '#!/usr/bin/env bash\nexec python3 /worker/src/mimicmotion_cli.py "$@"\n' > /usr/local/bin/mimicmotion; \
     chmod +x /usr/local/bin/mimicmotion; \
     chmod +x /worker/scripts/example_generation_render.py /worker/scripts/example_generation_refine.py; \
-    chmod +x /worker/src/generation_render_cogvideox.py /worker/src/generation_render_reenactment.py /worker/src/generation_render_full_body_reenactment.py /worker/src/portrait_reenactment_liveportrait.py /worker/src/full_body_reenactment_mimicmotion.py /worker/src/generation_refine_basic.py /worker/src/liveportrait_cli.py /worker/src/mimicmotion_cli.py; \
+    chmod +x /worker/src/generation_render_cogvideox.py /worker/src/generation_render_reenactment.py /worker/src/generation_render_full_body_reenactment.py /worker/src/portrait_reenactment_liveportrait.py /worker/src/full_body_reenactment_mimicmotion.py /worker/src/full_body_reenactment_quality_pipeline.py /worker/src/full_body_reenactment_stronger_base.py /worker/src/full_body_face_refiner_gfpgan.py /worker/src/full_body_temporal_cleanup_ffmpeg.py /worker/src/generation_refine_basic.py /worker/src/liveportrait_cli.py /worker/src/mimicmotion_cli.py; \
     mimicmotion --help >/dev/null
 WORKDIR /worker/src
 
