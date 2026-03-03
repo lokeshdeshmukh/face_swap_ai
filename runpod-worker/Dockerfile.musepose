@@ -54,7 +54,8 @@ RUN python3 -m venv --system-site-packages /opt/musepose-venv && \
 RUN if [ -f "${MUSEPOSE_REPO_DIR}/requirements.txt" ]; then \
       "${MUSEPOSE_VENV_BIN}/python" -m pip install --no-cache-dir --no-build-isolation \
         "clip @ https://github.com/openai/CLIP/archive/d50d76daa670286dd6cacf3bcd80b5e4823fc8e1.zip#sha256=b5842c25da441d6c581b53a5c60e0c2127ebafe0f746f8e15561a006c6c3be6a"; \
-      grep -v '^clip @ ' "${MUSEPOSE_REPO_DIR}/requirements.txt" > /tmp/musepose-requirements.txt; \
+      "${MUSEPOSE_VENV_BIN}/python" -m pip install --no-cache-dir "torchsde==0.2.6"; \
+      grep -v '^clip @ ' "${MUSEPOSE_REPO_DIR}/requirements.txt" | grep -v '^torchsde==' > /tmp/musepose-requirements.txt; \
       "${MUSEPOSE_VENV_BIN}/python" -m pip install --no-cache-dir -r /tmp/musepose-requirements.txt; \
     fi
 
