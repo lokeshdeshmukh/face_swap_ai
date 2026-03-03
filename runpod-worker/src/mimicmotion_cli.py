@@ -170,8 +170,21 @@ def _tfs_frame_to_uint8(frame):
     return frame
 
 
-def save_to_mp4(save_path, frames, fps):
+def _tfs_is_pathlike(value):
+    return isinstance(value, (str, bytes)) or hasattr(value, "__fspath__")
+
+
+def save_to_mp4(arg1, arg2, fps):
     from PIL import Image as _tfs_Image
+
+    if _tfs_is_pathlike(arg1) and not _tfs_is_pathlike(arg2):
+        save_path = arg1
+        frames = arg2
+    elif _tfs_is_pathlike(arg2) and not _tfs_is_pathlike(arg1):
+        save_path = arg2
+        frames = arg1
+    else:
+        raise TypeError(f"unable to determine save_path/frames ordering: {type(arg1)!r}, {type(arg2)!r}")
 
     output_path = _tfs_Path(save_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
