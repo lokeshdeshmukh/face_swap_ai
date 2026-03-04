@@ -40,7 +40,7 @@ RUN set -eux; \
     ln -sf "$(command -v python3)" /usr/local/bin/python; \
     python3 -m ensurepip --upgrade || true; \
     python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel; \
-    python3 -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu121 torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1; \
+    python3 -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu128 torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1; \
     python3 -m pip install --no-cache-dir -r /worker/requirements.txt; \
     python3 -m pip install --no-cache-dir -r /worker/requirements.generation.txt; \
     python3 -m pip install --no-cache-dir gfpgan==1.3.8; \

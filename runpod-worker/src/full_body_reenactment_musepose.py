@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shlex
 import shutil
 import subprocess
 import tempfile
@@ -241,6 +240,32 @@ def _find_generated_video(output_dir: Path, exclude: set[Path]) -> Path:
     return candidates[0]
 
 
+def _round_to_multiple(value: int, multiple: int) -> int:
+    if multiple <= 1:
+        return max(value, 1)
+    rounded = int(round(value / multiple) * multiple)
+    return max(rounded, multiple)
+
+
+def _resolve_target_resolution(width: int, height: int) -> tuple[int, int]:
+    explicit_width = os.getenv("MUSEPOSE_WIDTH", "").strip()
+    explicit_height = os.getenv("MUSEPOSE_HEIGHT", "").strip()
+    if explicit_width and explicit_height:
+        return int(explicit_width), int(explicit_height)
+
+    max_long_edge = int(os.getenv("MUSEPOSE_MAX_LONG_EDGE", "1024"))
+    max_short_edge = int(os.getenv("MUSEPOSE_MAX_SHORT_EDGE", "576"))
+    round_multiple = int(os.getenv("MUSEPOSE_RESOLUTION_MULTIPLE", "64"))
+
+    long_edge = max(width, height)
+    short_edge = min(width, height)
+    scale = min(max_long_edge / max(long_edge, 1), max_short_edge / max(short_edge, 1), 1.0)
+
+    scaled_width = _round_to_multiple(int(width * scale), round_multiple)
+    scaled_height = _round_to_multiple(int(height * scale), round_multiple)
+    return scaled_width, scaled_height
+
+
 def _build_runtime_config(
     *,
     template_path: Path,
@@ -323,9 +348,8 @@ def main() -> None:
         if not required.exists():
             raise SystemExit(f"required MusePose file missing: {required}")
 
-    height, width = shot_plan.render_profile.resolution
-    width = int(os.getenv("MUSEPOSE_WIDTH", str(width)))
-    height = int(os.getenv("MUSEPOSE_HEIGHT", str(height)))
+    width, height = shot_plan.render_profile.resolution
+    width, height = _resolve_target_resolution(width, height)
     seed = shot_plan.seed if shot_plan.seed is not None else int(os.getenv("MUSEPOSE_SEED", "42"))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -335,6 +359,7 @@ def main() -> None:
     env = os.environ.copy()
     pythonpath = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = f"{repo_dir}:{pythonpath}" if pythonpath else str(repo_dir)
+    env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "max_split_size_mb:128")
     _ensure_weight_layout(repo_dir)
 
     with tempfile.TemporaryDirectory(prefix="musepose-full-body-") as temp_dir:
