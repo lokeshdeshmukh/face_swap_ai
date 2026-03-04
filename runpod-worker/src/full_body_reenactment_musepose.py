@@ -255,15 +255,37 @@ def _build_runtime_config(
     config["seed"] = seed
     config["output_dir"] = str(output_dir)
     config["test_cases"] = {
-        "0001": [
-            str(source_image.resolve()),
+        str(source_image.resolve()): [
             str(aligned_pose_video.resolve()),
-            1,
         ]
     }
     runtime_path = output_dir / "musepose.runtime.yaml"
     runtime_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     return runtime_path
+
+
+def _validate_runtime_config(runtime_config: Path) -> None:
+    config = yaml.safe_load(runtime_config.read_text(encoding="utf-8"))
+    test_cases = config.get("test_cases")
+    if not isinstance(test_cases, dict) or not test_cases:
+        raise SystemExit(f"invalid MusePose runtime config at {runtime_config}: missing test_cases")
+
+    for ref_image_path, pose_paths in test_cases.items():
+        ref_path = Path(str(ref_image_path))
+        if not ref_path.exists():
+            raise SystemExit(
+                f"invalid MusePose runtime config at {runtime_config}: reference image path does not exist: {ref_image_path}"
+            )
+        if not isinstance(pose_paths, list) or not pose_paths:
+            raise SystemExit(
+                f"invalid MusePose runtime config at {runtime_config}: pose path list missing for {ref_image_path}"
+            )
+        for pose_path in pose_paths:
+            candidate = Path(str(pose_path))
+            if not candidate.exists():
+                raise SystemExit(
+                    f"invalid MusePose runtime config at {runtime_config}: pose video path does not exist: {pose_path}"
+                )
 
 
 def main() -> None:
@@ -343,6 +365,7 @@ def main() -> None:
             aligned_pose_video=aligned_pose,
             seed=seed,
         )
+        _validate_runtime_config(runtime_config)
         exclude = {aligned_pose.resolve()}
         stage2_cmd = [
             python_bin,
