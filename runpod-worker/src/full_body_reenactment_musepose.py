@@ -300,8 +300,6 @@ def main() -> None:
     height, width = shot_plan.render_profile.resolution
     width = int(os.getenv("MUSEPOSE_WIDTH", str(width)))
     height = int(os.getenv("MUSEPOSE_HEIGHT", str(height)))
-    fps = min(shot_plan.render_profile.fps, int(os.getenv("MUSEPOSE_OUTPUT_FPS", "12")))
-    fps = max(fps, 1)
     seed = shot_plan.seed if shot_plan.seed is not None else int(os.getenv("MUSEPOSE_SEED", "42"))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -351,8 +349,6 @@ def main() -> None:
             str(width),
             "-H",
             str(height),
-            "-fps",
-            str(fps),
         ]
         _run(stage2_cmd, cwd=repo_dir, env=env)
 
