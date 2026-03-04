@@ -313,6 +313,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="musepose-full-body-") as temp_dir:
         temp_root = Path(temp_dir)
         aligned_pose = temp_root / "pose-aligned.mp4"
+        align_debug = temp_root / "pose-align-debug.mp4"
 
         align_cmd = [
             python_bin,
@@ -321,8 +322,10 @@ def main() -> None:
             str(source_image.resolve()),
             "--vidfn",
             str(control_bundle.driving_video),
-            "--save_path",
+            "--outfn_align_pose_video",
             str(aligned_pose),
+            "--outfn",
+            str(align_debug),
         ]
         _run(align_cmd, cwd=repo_dir, env=env)
         if not aligned_pose.exists() or aligned_pose.stat().st_size <= 0:
