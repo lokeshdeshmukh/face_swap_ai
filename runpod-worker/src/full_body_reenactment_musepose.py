@@ -159,6 +159,7 @@ def _ensure_weight_layout(repo_dir: Path) -> Path:
 
     musepose_dir = pretrained_root / "MusePose"
     dwpose_dir = pretrained_root / "DWPose"
+    dwpose_dir_legacy = pretrained_root / "dwpose"
     sd_variations_dir = pretrained_root / "sd-image-variations-diffusers"
     sd_vae_dir = pretrained_root / "sd-vae-ft-mse"
     for path in (musepose_dir, dwpose_dir, sd_variations_dir, sd_vae_dir):
@@ -194,6 +195,8 @@ def _ensure_weight_layout(repo_dir: Path) -> Path:
     ).strip() or "yolox_l_8x8_300e_coco_20211126_140236-d3bd2b23.pth"
     yolox_path = _download_url(yolox_url, cache_dir / "external" / yolox_name)
     _link_path(yolox_path, dwpose_dir / yolox_name)
+    _link_path(yolox_path, dwpose_dir / "yolox_l_8x8_300e_coco.pth")
+    _link_path(dwpose_dir, dwpose_dir_legacy)
 
     sd_variations_repo = (
         os.getenv("MUSEPOSE_SD_VARIATIONS_REPO", "lambdalabs/sd-image-variations-diffusers").strip()
