@@ -208,6 +208,10 @@ def _ensure_weight_layout(repo_dir: Path) -> Path:
         cache_dir,
         patterns=["unet/*", "image_encoder/*", "feature_extractor/*", "scheduler/*", "config.json", "model_index.json"],
     )
+    for alias_name in ("image_encoder", "feature_extractor", "scheduler", "unet"):
+        source_path = sd_variations_dir / alias_name
+        if source_path.exists():
+            _link_path(source_path, pretrained_root / alias_name)
 
     sd_vae_repo = os.getenv("MUSEPOSE_VAE_REPO", "stabilityai/sd-vae-ft-mse").strip() or "stabilityai/sd-vae-ft-mse"
     _download_snapshot(
